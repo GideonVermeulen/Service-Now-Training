@@ -1,0 +1,2485 @@
+{
+  "title": "ServiceNow CIS-TPRM practice",
+  "description": "Practice questions for the ServiceNow Certified Implementation Specialist – Third-party Risk Management exam.",
+  "exam": {
+    "questionCount": 60,
+    "timeLimitMinutes": 90,
+    "passMarkPercent": 70
+  },
+  "questions": [
+    {
+      "id": "tprm-001",
+      "question": "To what type of assessment record can a vendor contact respond?",
+      "options": [
+        "Vendor tiering assessment",
+        "Vendor risk assessment",
+        "Customer assessment",
+        "External monitoring assessment"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-002",
+      "question": "Which Due Diligence workflow process allows the negotiator to access all the data from the preceding processes in the Due Diligence workflows to design and settle the contract?",
+      "options": [
+        "ESG Review",
+        "IRQ",
+        "Due Diligence",
+        "Contract Risk",
+        "Financial Assessment"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-003",
+      "question": "What Third-party Risk Management feature pinpoints the geographical locations of active third parties and engagements?",
+      "options": [
+        "Third-party engagement page",
+        "Third-party geographic view",
+        "Risk concentration map",
+        "Risk engagement atlas"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-004",
+      "question": "What types of due diligence requests can be made by an employee through the Employee Center?",
+      "options": [
+        "Onboard a primary contact",
+        "Cancel an engagement",
+        "Reassess and existing engagement for contract renewal",
+        "Reassess an existing engagement",
+        "Offboard an engagement with NO due diligence",
+        "Onboard a new engagement",
+        "Offboard an engagement with due diligence"
+      ],
+      "answer": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "id": "tprm-005",
+      "question": "What application provides you with capabilities to define multiple levels of approvals based on business rule definitions?",
+      "options": [
+        "Multiple Approvers",
+        "Approval Configurator",
+        "Approval Layers",
+        "IRQ Approvals"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-006",
+      "question": "What table stores the information to trigger a particular risk assessment to be sent to a third party based on a response to an IRQ question?",
+      "options": [
+        "[sn_tprm_dd_m2m_question_to_assessment]",
+        "[sn_tprm_dd_m2m_question_to_questionnaire]",
+        "[sn_tprm_dd_m2m_trigger_to_questionnaire]",
+        "[sn_tprm_dd_m2m_trigger_to_assessment]"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-007",
+      "question": "What are some of the clickable/selectable metrics available at the top of the Due diligence management page of the Vendor Management workspace?",
+      "options": [
+        "Approval process",
+        "IRQ process",
+        "All active processes",
+        "On hold process",
+        "Due diligence process",
+        "SLO process"
+      ],
+      "answer": [
+        0,
+        1,
+        2,
+        4
+      ]
+    },
+    {
+      "id": "tprm-008",
+      "question": "Although the legacy tiering assessment process will still work in Third-party Risk Management, what is the process that replaces the use of tiering assessments?",
+      "options": [
+        "Internal Tiering Questionnaire",
+        "Inherent Risk Questionnaire",
+        "Internal TPA Questionnaire",
+        "Third-party Assessment Questionnaire"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-009",
+      "question": "What are the processes in the Due Diligence workflow?",
+      "options": [
+        "IRQ",
+        "Request",
+        "Due diligence",
+        "ESG Review",
+        "Financial Assessment",
+        "Contract Risk"
+      ],
+      "answer": [
+        0,
+        1,
+        2,
+        5
+      ]
+    },
+    {
+      "id": "tprm-010",
+      "question": "What new feature was added to the Vendor Management workspace for the 17.0.4 (Vancouver) release?",
+      "options": [
+        "Access to the Employee Center",
+        "Ability to configure approvals",
+        "Access to the Third-party Portal",
+        "Support for Third-party Risk Due Diligence"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-011",
+      "question": "Which type of questionnaire is used to internally to determine the vendor relationship?",
+      "options": [
+        "Third-party risk rating questionnaire",
+        "Inherent Risk Questionnaire",
+        "Third-party assessment questionnaire",
+        "Third-party relationship questionnaire"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-012",
+      "question": "What type of record is used to document missing or noncompliant third-party responses and remediation or to accept any non compliance?",
+      "options": [
+        "Third-party Remediation Tasks",
+        "Third-party Assessments",
+        "Third-party Risk Issues",
+        "Third-party Risk Statements"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-013",
+      "question": "Which of the following activities can be completed from the Third-party Portal:",
+      "options": [
+        "Monitor or remediate issues",
+        "Communicate with the organization",
+        "Update the Third-party Portfolio",
+        "Complete Assessments and Questionnaires"
+      ],
+      "answer": [
+        0,
+        1,
+        3
+      ]
+    },
+    {
+      "id": "tprm-014",
+      "question": "Who can create the Third-party Portfolio?",
+      "options": [
+        "Third-party Risk Manager",
+        "System Administrator",
+        "GRC Admin",
+        "Risk Manager"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-015",
+      "question": "Which of these fields are included on the Third-party Contact form?",
+      "options": [
+        "Risk rating",
+        "Rank tier",
+        "Primary contact",
+        "Email"
+      ],
+      "answer": [
+        2,
+        3
+      ]
+    },
+    {
+      "id": "tprm-016",
+      "question": "What is the minimum role required to create or modify third-party records?",
+      "options": [
+        "itil",
+        "third-party_manager",
+        "admin",
+        "third-party_admin"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-017",
+      "question": "Which of the following TPRM workflow steps are performed by the third-party risk manager?",
+      "options": [
+        "Creates issues for remediation",
+        "Prepares and send the third-party risk tiering assessment",
+        "Completes and submits the assessment",
+        "Creates internal and external assessment templates"
+      ],
+      "answer": [
+        1,
+        3
+      ]
+    },
+    {
+      "id": "tprm-018",
+      "question": "Which fields are required on the Third-party Risk Assessment form?",
+      "options": [
+        "Name",
+        "Description",
+        "Risk rating valid to",
+        "Assessment template"
+      ],
+      "answer": [
+        0,
+        2
+      ]
+    },
+    {
+      "id": "tprm-019",
+      "question": "What is a metric definition?",
+      "options": [
+        "Numeric value that represents the importance of this metric relative to other metrics in the same category",
+        "Text to use as a question on assessment questionnaires",
+        "Defines a set of records an organization wants to evaluate",
+        "Answer options on questionnaires"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-020",
+      "question": "What role is required for a third-party contact to be able to assign an issue?",
+      "options": [
+        "snc_internal",
+        "snc_external",
+        "sn_vendor_contact",
+        "sn_vendor_external"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-021",
+      "question": "Which assessment phase automatically triggers issue creation if conditions are met?",
+      "options": [
+        "Remediation",
+        "Responds",
+        "Generating Observations",
+        "Non-Compliant"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-022",
+      "question": "Which issue response generates an additional task?",
+      "options": [
+        "Defer",
+        "Accept",
+        "Mitigate",
+        "Fix"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-023",
+      "question": "Which Risk plugin provides the ability to set up a multi-level review and approval workflow?",
+      "options": [
+        "Approver configurator",
+        "Advanced Risk",
+        "Multi-level Approval",
+        "IRQ Approvals"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-024",
+      "question": "Which role is required to read through third-party assessment questions in the portal?",
+      "options": [
+        "Third-party primary contact",
+        "Third-party contact",
+        "Third-party assessment",
+        "Third-party manager"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-025",
+      "question": "Primary third-party and engagement contacts can support the following activities in the portal:",
+      "options": [
+        "Assign and reassign assessments",
+        "Create or modify assessments",
+        "Add or remove contacts",
+        "Assign primary and secondary contacts"
+      ],
+      "answer": [
+        0,
+        2,
+        3
+      ]
+    },
+    {
+      "id": "tprm-026",
+      "question": "Who can setup the Third-party Portal?",
+      "options": [
+        "Admin",
+        "Portal Administrator",
+        "Third-party Risk Manager",
+        "GRC Admin"
+      ],
+      "answer": [
+        0,
+        2
+      ]
+    },
+    {
+      "id": "tprm-027",
+      "question": "Which Service Portal can be configured to modify the Third-party Assessment Portal?",
+      "options": [
+        "Third-party Assessment Portal",
+        "Vendor Portal - Scoped Service Portal",
+        "Vendor Risk Assessment Portal",
+        "Third-party Portal - Scoped Service Portal"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-028",
+      "question": "Risks registered within an organization are captured as which type of record in ServiceNow?",
+      "options": [
+        "Control Definition",
+        "Risk Statement",
+        "Control Template",
+        "Attestation"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-029",
+      "question": "When Third-party Risk is integrated with the Policy and Compliance and Risk applications, the control status is automatically updated after the third-party risk assessment has moved to which state?",
+      "options": [
+        "Responses received",
+        "Generating observations",
+        "Finalizing with third-party",
+        "The status updates as soon as the contact Submits the assessment"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-030",
+      "question": "When designing reports and dashboards, important considerations are which of these?",
+      "options": [
+        "How will employees use the data from Third-party Risk Management",
+        "Whether you enjoy creating reports, or not",
+        "Who are the key stakeholders",
+        "The number of third parties the customer has"
+      ],
+      "answer": [
+        0,
+        2
+      ]
+    },
+    {
+      "id": "tprm-031",
+      "question": "What are some of the baseline reports included for Third-party Risk Management?",
+      "options": [
+        "Upcoming Third-party Risk Assessments",
+        "Third parties by Risk Rating",
+        "Third parties with a Critical Risk Rating",
+        "Third parties with Non Compliant Status"
+      ],
+      "answer": [
+        0,
+        1
+      ]
+    },
+    {
+      "id": "tprm-032",
+      "question": "ServiceNow helps companies manage vendors without emails and spreadsheets using the:",
+      "options": [
+        "The Customer Service Portal",
+        "The Vendor Portal",
+        "The Vendor Registry",
+        "The Vendor Platform"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-033",
+      "question": "What is a typical feature of vendor portal configuration software?",
+      "options": [
+        "Automated email notifications to vendors",
+        "Integration with social media platforms",
+        "Inventory management tools",
+        "Multi-currency payment processing"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-034",
+      "question": "Vendor Risk Issues are considered inactive when they enter this state:",
+      "options": [
+        "Review",
+        "Submitted to Vendor",
+        "Finalize with Vendor",
+        "Closed"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-035",
+      "question": "Which of the following is a common table used for Vendor Risk Management reporting?",
+      "options": [
+        "Control [sn_control]",
+        "Task [task]",
+        "Vendor Risk Assessment [sn_vdr_risk_assessment]",
+        "Company [core_company]"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-036",
+      "question": "How can vendor portal configuration help a company reduce costs?",
+      "options": [
+        "By negotiating better prices with vendors",
+        "By outsourcing vendor management to a third-party provider",
+        "By reducing the need for manual data entry and invoice processing",
+        "By consolidating multiple vendor portals into a single platform"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-037",
+      "question": "Which of the following can occur in the Vendor Portal?",
+      "options": [
+        "View Project Gannt Charts",
+        "Submit an incident",
+        "Respond to a Vendor Risk Assessment",
+        "Manage Vendor Contacts"
+      ],
+      "answer": [
+        2,
+        3
+      ]
+    },
+    {
+      "id": "tprm-038",
+      "question": "Which of the following is best practice for vendor portal configuration?",
+      "options": [
+        "Allowing vendors to access the portal without authentication",
+        "Requiring vendors to submit paper invoices in addition to electronic ones",
+        "Customizing the portal to meet the needs of each individual vendor",
+        "Providing vendors with training and support to ensure successful use of the portal"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-039",
+      "question": "What is the assigning probability and impact ratings in the risk assessment process?",
+      "options": [
+        "Calculate the annualized loss expectancy (ALE)",
+        "Identify the assets to be assessed",
+        "Assign blame for any security incidents",
+        "Transfer all risks to third-party vendors"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-040",
+      "question": "Which of these must be true in order for a vendor risk issue to be visible in the Vendor Portal?",
+      "options": [
+        "There must be at least one secondary contact for the vendor",
+        "The primary vendor contact must have the sn_vdr_issues role",
+        "Issues are always visible in the vendor portal",
+        "The Visible in vendor portal field must have a value of true"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-041",
+      "question": "What are the features of Vendor Risk Issues?",
+      "options": [
+        "Generate audit tasks for the vendor risk team",
+        "Can only be seen by the customer's vendor risk team",
+        "Provide vendor direct access to update and respond to Issues",
+        "Can be generated on-demand or automatically due to an incorrect answer"
+      ],
+      "answer": [
+        2,
+        3
+      ]
+    },
+    {
+      "id": "tprm-042",
+      "question": "During the Generating Observations phase of the Vendor Risk Assessment, what actions might be taken by the Risk Assessor?",
+      "options": [
+        "Create issues from the assessment if necessary",
+        "Update the vendor risk score",
+        "Email the vendor",
+        "Answer questions the vendor forgot to answer"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-043",
+      "question": "Vendor Risk Tasks are saved to which one of the following tables?",
+      "options": [
+        "[task]",
+        "[planned_task]",
+        "[sn_vendor_risk_task]",
+        "[sn_vdr_risk_asmt_task]"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-044",
+      "question": "Which of these options can be used in data cleansing when importing vendor data?",
+      "options": [
+        "Data Policies",
+        "Access Control Lists",
+        "Field Normalization Rules",
+        "Fix Scripts",
+        "Data Import or Data Source Transform",
+        "UI Policies"
+      ],
+      "answer": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "tprm-045",
+      "question": "What is the definition of 'Risk Management'?",
+      "options": [
+        "Policies/Standards/Procedures established to ensure an organization is aligned with corporate strategy and expectations are clearly defined",
+        "The process of conforming to standards, policies, and remediation of audit findings",
+        "The elimination of vulnerable surface area in an enterprise environment",
+        "Process to identify, assess, and respond to risks, threats and vulnerabilities that could compromise the business"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-046",
+      "question": "The Vendor records are stored in which table?",
+      "options": [
+        "Company [core_company]",
+        "Department [cmn_company]",
+        "Task [task]",
+        "User [sys_user]"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-047",
+      "question": "Which statements most accurately describe assignments to vendor contacts?",
+      "options": [
+        "Individual sections in the questionnaire or document request can be assigned",
+        "A questionnaire or document request cannot be assigned to multiple vendor contacts",
+        "A questionnaire can be read by vendor contacts that are not assigned",
+        "A questionnaire can only be completed by assigned vendor contacts"
+      ],
+      "answer": [
+        2,
+        3
+      ]
+    },
+    {
+      "id": "tprm-048",
+      "question": "What third-party vendor security evaluation solution are commonly integrated with TPRM out-of-the-box?",
+      "options": [
+        "MyScoreMetrics",
+        "Vendor Insights",
+        "Bitsight",
+        "Security Scorecard"
+      ],
+      "answer": [
+        2,
+        3
+      ]
+    },
+    {
+      "id": "tprm-049",
+      "question": "For each questionnaire template/assessment metric type, how many vendor risk areas can be designated?",
+      "options": [
+        "One",
+        "As many as desired",
+        "None",
+        "Two"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-050",
+      "question": "Which functions can be performed in the Vendor Portal",
+      "options": [
+        "Assessment response",
+        "Contact Management",
+        "Issue Remediation",
+        "Schedule web meetings",
+        "Requests via virtual agent"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "id": "tprm-051",
+      "question": "Where can the score for each Assessment Metric or Metric Category be configured?",
+      "options": [
+        "Assessment Metric Category record",
+        "Assessment Template record",
+        "Assessment record",
+        "Assessment Metric Type record"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-052",
+      "question": "Roles preceded by sn_vdr_risk are for which scope?",
+      "options": [
+        "GRC: Vendor Risk Remediation",
+        "GRC: Vendor Risk Core",
+        "GRC: Risk Management",
+        "GRC: Vendor Risk Management"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-053",
+      "question": "Internal roles include:",
+      "options": [
+        "Vendor Contact sn_vdr_risk.vendor_contact",
+        "Vendor Risk Manager sn_vdr_risk_asmt.vendor_risk_manager",
+        "Primary Vendor Contact sn_vdr_risk_asmt.prim_vendor_contact",
+        "Vendor Risk Assessor sn_vdr_risk_asmt.vendor_assessor",
+        "Vendor Risk Reviewer sn_vdr_risk_asmt.vendor_assessment_reviewer"
+      ],
+      "answer": [
+        1,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "tprm-054",
+      "question": "Who is able to change the password for the vendor contact?",
+      "options": [
+        "Vendor Contract Relationship Manager",
+        "sys_admin",
+        "Vendor contact via the Forgot Password link",
+        "Vendor Risk Reviewer"
+      ],
+      "answer": [
+        1,
+        2
+      ]
+    },
+    {
+      "id": "tprm-055",
+      "question": "Which statement accurately describes the visibility and audit history of actions and communications in the Vendor Risk Management application?",
+      "options": [
+        "The vendor assessor interactions are capture in the Vendor Risk Issue record and are only visible from the portal view",
+        "The Vendor Risk Issues created and the activity and history are lost from the Vendor Assessment Portal when the associated vendor contact changes",
+        "The Vendor Risk Issues and the activity and history will remain in the Vendor Assessment Portal even when vendor contacts change",
+        "The vendor and assessor interactions are captured in the Vendor Risk Issue record and are only visible from the platform view"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-056",
+      "question": "From an Assessment record, the vendor risk assessor can click on the \"View Responses\" to see which of the following?",
+      "options": [
+        "Issue Responses",
+        "Email Responses",
+        "Task Responses",
+        "Assessment Responses"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-057",
+      "question": "Before any changes to the configuration of an application are made, it is recommended that the correct update set and application scope are selected. What role is required for this functionality?",
+      "options": [
+        "The Vendor Administrator role",
+        "The Data Administrator role",
+        "The User Administrator role",
+        "The System Administrator role"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-058",
+      "question": "Which of the following is an objective of Vendor Risk Management?",
+      "options": [
+        "To help vendors improve their security posture and preparedness",
+        "To assess and manage the risk from interactions with vendors and third parties",
+        "To help negotiate the best possible price for a product or service from the vendor",
+        "To verify that vendors have adequate measures and processes in place to ensure profitability of vendor"
+      ],
+      "answer": [
+        0,
+        1
+      ]
+    },
+    {
+      "id": "tprm-059",
+      "question": "Which of the following is the main benefit of using the Vendor Portal?",
+      "options": [
+        "Assessment are performed via the Vendor Portal and spreadsheets",
+        "More efficiently communicating Assessments with a single contact",
+        "Assessments are shared through the Vendor Portal and email",
+        "More efficiently completing Assessments via the Vendor Portal"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-060",
+      "question": "Baseline email notifications that help to automate the vendor risk management process are installed with which plugin?",
+      "options": [
+        "GRC: Vendor Risk Management",
+        "GRC: Audit Management",
+        "GRC: Risk Management",
+        "GRC: Policy and Compliance Management"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-061",
+      "question": "Which statement best describes the role assignment of vendor contacts in Vendor Risk Management?",
+      "options": [
+        "When vendor contracts are created, they are automatically assigned the snc_internal role and the snc_external role",
+        "When vendor contacts are created, they must be manually assigned the snc_external role",
+        "When vendor contacts are created, they are automatically assigned the snc_internal role",
+        "When vendor contacts are created, they are automatically assigned the snc_external role"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-062",
+      "question": "What can a vendor contact do in the Vendor Portal?",
+      "options": [
+        "Update answers to returned questionnaires",
+        "Communicate or share information with other vendors of the assessing organization",
+        "Create new issues and tasks for the vendor risk assessor team",
+        "Review and respond to issues created by the assessing organization",
+        "Manage vendor contacts and task assignments within the vendor organization",
+        "Respond to assessments sent by the assessing organization"
+      ],
+      "answer": [
+        0,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "id": "tprm-063",
+      "question": "Where do vendors manage issues, respond to requests, and fulfill tasks assigned to them?",
+      "options": [
+        "Spreadsheets",
+        "Vendor Portal",
+        "ServiceNow Platform",
+        "Email"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-064",
+      "question": "What are the baseline mandatory fields when creating a new Vendor Contact?",
+      "options": [
+        "Name (First and Last)",
+        "Vendor",
+        "Department",
+        "Email",
+        "Role"
+      ],
+      "answer": [
+        0,
+        1,
+        3
+      ]
+    },
+    {
+      "id": "tprm-065",
+      "question": "Which of the following are functions of the Vendor Risk Assessor?",
+      "options": [
+        "Enable communications across vendors",
+        "Access completed assessments from vendors",
+        "Update vendor contract deadlines",
+        "Create issues for the vendor",
+        "Create a Primary Contact record for a Vendor"
+      ],
+      "answer": [
+        1,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "tprm-066",
+      "question": "What is the no code option to cleaning data being loads into the Vendor Risk application?",
+      "options": [
+        "Fix Scripts",
+        "Field Normalization",
+        "Import"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-067",
+      "question": "When will the tiering value appear on the Vendor record?",
+      "options": [
+        "When the Tiering Assessment record state is closed",
+        "When the Tiering Assessment record state is Tiering Assessment",
+        "When all tiering assessments have been completed",
+        "When the Vendor record is created"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-068",
+      "question": "If clean data is not provided by the customer, what baseline solution are available within the platform?",
+      "options": [
+        "Integration Hub ETC Plugin",
+        "Field normalization plugin",
+        "Service Graph connector",
+        "System definition fix scripts module",
+        "System import transform map scripts"
+      ],
+      "answer": [
+        1,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "tprm-069",
+      "question": "What can be used to automatically assign a Vendor tier value?",
+      "options": [
+        "Risk Assessment",
+        "Configuration Setting",
+        "Tiering Assessment",
+        "Vendor Tiering Rule",
+        "Visual Task Board"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-070",
+      "question": "On the Contact record, there is a field for the Vendor name. This is which field (with a label change) from the sys_user table?",
+      "options": [
+        "sn_vendor",
+        "company_name",
+        "company",
+        "vendor_name"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-071",
+      "question": "The Template Designer is leveraged to create which of the following?",
+      "options": [
+        "Document Request Template",
+        "Assessment Template",
+        "Vendor Risk Assessment",
+        "Questionnaire Template"
+      ],
+      "answer": [
+        0,
+        3
+      ]
+    },
+    {
+      "id": "tprm-072",
+      "question": "All Assessment Metrics within a Metric Category are scored, are rolled up, and get a score of.",
+      "options": [
+        "0-5",
+        "0-100",
+        "0-20",
+        "0-10"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-073",
+      "question": "The Template Designer contains which of the following elements?",
+      "options": [
+        "Option to create an Assessment Template and assign to a vendor",
+        "Properties for the supported question data types",
+        "Options to weight questions or sections",
+        "Design canvas for creating the questions and answers"
+      ],
+      "answer": [
+        1,
+        3
+      ]
+    },
+    {
+      "id": "tprm-074",
+      "question": "In order to evaluate a vendor on a recurring basis, configure a record in this table:",
+      "options": [
+        "Repeating Surveys",
+        "Assessment Metric",
+        "Repeating Assessments",
+        "Assessment Metric Type"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-075",
+      "question": "A Document Request Template is a record in which table?",
+      "options": [
+        "Document request item [sn_document_template]",
+        "Vendor risk assessment [sn_vdr_risk_asmt_assessment]",
+        "Assessment metric category [asmt_metric_category]",
+        "Assessment metric type [asmt_metric_type]"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-076",
+      "question": "Which statement best describes the SIG Lite?",
+      "options": [
+        "The SIG Lite is a company specific questionnaire",
+        "The SIG Lite is a ServiceNow developed questionnaire",
+        "The SIG Lite assesses basic levels of due diligence and provides a broad but high-level understanding about internal security controls",
+        "The SIG Lite assesses service providers that store or manage highly sensitive or regulated information"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-077",
+      "question": "Which of the following statements are true about the Template Designer?",
+      "options": [
+        "Question weight can be set in the Template Designer",
+        "Correct answers can be set in the Template Designer",
+        "Questions can be mandatory in the Template Designer",
+        "Dependencies between questions cannot be set in the Template Designer",
+        "Questions cannot be mandatory in the Template Designer"
+      ],
+      "answer": [
+        1,
+        2
+      ]
+    },
+    {
+      "id": "tprm-078",
+      "question": "Which could have an impact on the vendor's Risk Assessment rating?",
+      "options": [
+        "Answering one or more questions incorrectly",
+        "Leaving answers blank",
+        "Omitting documentation",
+        "Spelling errors",
+        "Reassigning a questionnaire to a contact"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "id": "tprm-079",
+      "question": "What are individual questions within a questionnaire or document request referred to as?",
+      "options": [
+        "Metrics",
+        "Ratings",
+        "Templates",
+        "Tiers"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-080",
+      "question": "In addition to the \"Design Canvas\", which elements does the Template Designer contain?",
+      "options": [
+        "Header bar which contains tabs that display different views and a menu of various functions",
+        "Controls for the supported question data types",
+        "FAQ Page and Tour option",
+        "Question and Categories tabs that contain question/categories that were added to the Question Bank",
+        "Risk criteria to identify conditions and risk areas"
+      ],
+      "answer": [
+        0,
+        1,
+        3
+      ]
+    },
+    {
+      "id": "tprm-081",
+      "question": "In the baseline, what component sends reminder notifications about assessments?",
+      "options": [
+        "Reminder notifications are triggered on-demand",
+        "Events fired by a Business Rule",
+        "A Scheduled Job",
+        "A Workflow"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-082",
+      "question": "What is the minimum role required to create a new Vendor Risk Issue?",
+      "options": [
+        "Vendor Risk Assessor [sn_vdr_risk_asmt.vendor_assessor]",
+        "Vendor Assessment Reviewer [sn_vdr_risk_asmt.vendor_assessment_reviewer]",
+        "Vendor Risk Manager [sn_vdr_risk_asmt.vendor_risk_manager]",
+        "System Administrator [admin]"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-083",
+      "question": "Vendor Risk Issues are usually created in which stage of an Assessment?",
+      "options": [
+        "Responses Received",
+        "Generating Observations",
+        "Submitted to Vendor",
+        "Finalizing with Vendor"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-084",
+      "question": "A Vendor Risk Task can be created from which of the following records?",
+      "options": [
+        "Policy, Assessment, Vendor",
+        "Risk, Policy, Assessment",
+        "Policy, Vendor Risk Issue, Assessment",
+        "Vendor Risk Issue, Assessment, Vendor"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-085",
+      "question": "What are some of the purposes of a Vendor Risk Issue?",
+      "options": [
+        "Log access-related incidents for the vendor portal",
+        "Indicate vendors that need further assessment",
+        "Accept risks identified in the assessment",
+        "Track remediation of compliance gaps"
+      ],
+      "answer": [
+        1,
+        3
+      ]
+    },
+    {
+      "id": "tprm-086",
+      "question": "The VRM issue management process is frequently unique to an organization. What two ServiceNow provided building blocks were covered in this course to help with customer needs that might arise during the lifecycle of VRM issues?",
+      "options": [
+        "Flow Designer",
+        "Service Management",
+        "Workflow Editor",
+        "Incident Management"
+      ],
+      "answer": [
+        0,
+        2
+      ]
+    },
+    {
+      "id": "tprm-087",
+      "question": "In the Vendor Portal, who can reassign Assessments?",
+      "options": [
+        "Vendor Business Owner",
+        "Vendor",
+        "Primary Contact",
+        "Vendor Manager"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-088",
+      "question": "A Vendor Risk Assessment that consists of a SIG Lite questionnaire and two document requests are displayed as how many total request in the Vendor Portal?",
+      "options": [
+        "2",
+        "3",
+        "0",
+        "1"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-089",
+      "question": "When an assessor creates an issue or task from the vendor record, it is grouped with other issues or tasks for what ServiceNow entity?",
+      "options": [
+        "Vendor",
+        "All vendors",
+        "Assessment",
+        "Remediation plan"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-090",
+      "question": "The assessment page provides an area to import what kind of a completed questionnaire?",
+      "options": [
+        "GDPR",
+        "SOC1 & SOC2",
+        "SIG",
+        "SOX"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-091",
+      "question": "In the Paris release and beyond, the scoped vendor portal (svdp) will be installed by default can be overridden in which System Property record to use the legacy/traditional vendor portal (vdp)",
+      "options": [
+        "sn_vdr_risk_asmt.vendor_portal",
+        "sn_vdr_risk_asmt.scoped.vendor_portal_endpoint",
+        "sn_vdr_risk_asmt.vendor_portal_endpoint",
+        "sn_vdr_risk_asmt.scoped.vendor_portal"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-092",
+      "question": "A vendor is assessed and responds to a question which impacts one of the Controls applied to them. When is the Control Status updated?",
+      "options": [
+        "When the Vendor Risk Assessment State is Responses Received",
+        "When the Vendor Risk Assessment State is Finalizing with Vendor or Closed",
+        "When the Vendor Risk Assessment response is saved",
+        "When all Questions in the Vendor Risk Assessment have a response"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-093",
+      "question": "What is the advantage of using both VRM and GRC/IRM?",
+      "options": [
+        "Vendor Risk engagements automatically match with Audit engagements",
+        "All compliance controls are automatically visible to the vendor risk manager",
+        "Primary vendor contacts can then see their overall non compliant risk score",
+        "Non compliant controls automatically adjust the risk score for a vendor entity"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-094",
+      "question": "On which of the following can you create vendor risk reports?",
+      "options": [
+        "Company [core_company]",
+        "Third-party Risk Assessment [sn_vdr_risk_asmt_assessment]",
+        "Third-party Risk Issue [sn_vdr_risk_asmt_issue]",
+        "Vendor Contact [vm_vendor_contact]",
+        "Vendor Activity [vm_vendor_activity]"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "id": "tprm-095",
+      "question": "A Vendor Risk Manager needs to run a report displaying Critical Vendors. On which table would this person run a report?",
+      "options": [
+        "Company [core_company]",
+        "Vendor Risk Issue [sn_var_asmt_issue]",
+        "Vendor Contact [vm_vdr_contact]",
+        "Vendor Risk Assessment [sn_vdr_risk_asmt_assessment]"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-096",
+      "question": "Key data sources for Vendor Risk reporting include which of the following tables?",
+      "options": [
+        "Vendor Risk Assessment [sn_vdr_risk_asmt_assessment]",
+        "Questionnaire Templates [asmt_metric_type]",
+        "Vendor Benchmark Scores [sn_vdr_client_score]",
+        "Survey Scored [snc_survey_scores]",
+        "Vendor Risk Issue [sn_vdr_risk_asmt_issue]"
+      ],
+      "answer": [
+        0,
+        4
+      ]
+    },
+    {
+      "id": "tprm-097",
+      "question": "Which table does Vendor Contact extend?",
+      "options": [
+        "User",
+        "HR Profile",
+        "Vendor"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-098",
+      "question": "Which of the following are the SIG levels?",
+      "options": [
+        "Lite",
+        "Core",
+        "Full",
+        "Master",
+        "Large"
+      ],
+      "answer": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "id": "tprm-099",
+      "question": "What is the baselines risk assessment reminders workflow sent prior to an assessment deadline?",
+      "options": [
+        "3 and 5 days",
+        "3 and 7 days",
+        "5 and 8 days",
+        "5 and 10 days"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-100",
+      "question": "Who is responsible for providing the Vendor Risk Assessment?",
+      "options": [
+        "Supplier",
+        "Vendor",
+        "Partner",
+        "Risk Management"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-101",
+      "question": "What role at a minimum is required to complete a Third-party provider setup?",
+      "options": [
+        "[sn_vdr_risk_asmt.vendor_assessment_reviewer]",
+        "[sn_vdr_risk_asmt.vendor_vendor_management]"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-102",
+      "question": "What is updated when a link to a Business Service record to a Vendor Record?",
+      "options": [
+        "Business Owner",
+        "Vendor",
+        "Tiering Assessment"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-103",
+      "question": "Which of the following is not a step in the risk assessment process?",
+      "options": [
+        "Assign probability and impact ratings",
+        "Determine the risk response strategy",
+        "Define the scope of the assessment",
+        "Identify threats and vulnerabilities"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-104",
+      "question": "Which of the following is not a component of the risk management process?",
+      "options": [
+        "Risk mitigation",
+        "Risk acceptance",
+        "Risk assessment",
+        "Risk enhancement"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-105",
+      "question": "Which of the following is a limitation of qualitative risk analysis?",
+      "options": [
+        "It is unable to provide a quantitative estimate of risk",
+        "It is more accurate than quantitative risk analysis",
+        "It requires a significant amount of technical knowledge",
+        "It is time-consuming and expensive"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-106",
+      "question": "What is the difference between a risk appetite and risk tolerance?",
+      "options": [
+        "Risk appetite and risk tolerance are identical concepts",
+        "Risk appetite is the amount of risk that can be tolerated before it becomes unacceptable, while risk tolerance is the amount of risk an organization is willing to accept",
+        "Risk appetite is a measure of an organization's financial resources, while risk tolerance is a measure of its technical capabilities",
+        "Risk appetite is the amount of risk an organization is willing to accept, while risk tolerance is the amount of risk that can be tolerated before it becomes unacceptable"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-107",
+      "question": "Which of the following is not a type of assessment that can be conducted?",
+      "options": [
+        "Penetration testing",
+        "Vulnerability assessment",
+        "Performance assessment",
+        "Compliance assessment"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-108",
+      "question": "Which of the following is an example of a risk mitigation strategy?",
+      "options": [
+        "Transferring all risks to the vendor",
+        "Implementing controls to mitigate risk",
+        "Ignoring the risk",
+        "Terminating the vendor immediately"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-109",
+      "question": "What is a vendor portal configuration?",
+      "options": [
+        "Establish relationships with new vendors",
+        "Manage vendor payment terms",
+        "Set up a virtual storefront for vendors to sell their products",
+        "Configure a system for vendors to submit invoices and receive payments"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-110",
+      "question": "Which of the following is not a component of a Vendor Risk Management program?",
+      "options": [
+        "Vendor selection criteria",
+        "Vendor termination",
+        "Risk assessment",
+        "Contract negotiations"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-111",
+      "question": "What is the difference between vulnerability scanning and penetration testing?",
+      "options": [
+        "Vulnerability scanning is used for application security, while penetration testing is used for network security",
+        "Vulnerability scanning is a manual process, while penetration testing is automated",
+        "Vulnerability scanning is used for network security, while penetration testing is used for application security",
+        "Vulnerability scanning focuses on detecting vulnerabilities, while penetration testing attempts to exploit vulnerabilities"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-112",
+      "question": "What is the benefit of using a dashboard with real-time data?",
+      "options": [
+        "Ability to identify and respond to issues immediately",
+        "Greater control over data access",
+        "Improved security of data",
+        "Faster data entry and editing"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-113",
+      "question": "Which ServiceNow tool is used for generating security ratings for vendors?",
+      "options": [
+        "Vendor Risk Management",
+        "Governance, Risk, and Compliance",
+        "Risk Management",
+        "Security Operations",
+        "Compliance Management"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-114",
+      "question": "What is the first step in a Vendor Risk Management program?",
+      "options": [
+        "Selecting vendors to work with",
+        "Implementing a monitoring and reporting system",
+        "Assessing the risks associated with vendors",
+        "Negotiating contract terms",
+        "Terminating vendors who pose a risk"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-115",
+      "question": "What is the purpose of a penetration test?",
+      "options": [
+        "To exploit vulnerabilities and demonstrate their impact",
+        "To assign blame for any security incidents",
+        "To detect and mitigate vulnerabilities",
+        "To ensure compliance with legal regulations",
+        "To transfer all risks to third-party vendors"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-116",
+      "question": "Which of the following is a benefit of using a vendor portal?",
+      "options": [
+        "Streamlined procurement processes",
+        "Higher profit margins for vendors",
+        "Increased competition among vendors",
+        "Greater control over vendor pricing"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-117",
+      "question": "Which of the following is a benefit of implementing a Vendor Risk Management program?",
+      "options": [
+        "Decreased profitability",
+        "Decreased regulatory compliance",
+        "Improved vendor relationships",
+        "Increased operational costs"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-118",
+      "question": "Which ServiceNow plugin is required for enabling Vendor Risk Management?",
+      "options": [
+        "Vendor Management",
+        "Vendor Risk",
+        "Security Operations",
+        "Risk Management",
+        "Governance, Risk, and Compliance"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-119",
+      "question": "What is the purpose of a risk register?",
+      "options": [
+        "To identify and prioritize risks",
+        "To transfer all risks to third-party vendors",
+        "To document identified risks and associated risk responses",
+        "To calculate the annualized loss expectancy (ALE)"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-120",
+      "question": "What is the most common type of vendor portal configuration?",
+      "options": [
+        "Open-source platform",
+        "Cloud-based solution",
+        "On-premise software",
+        "Hosted solution"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-121",
+      "question": "What is the primary objective of Vendor Risk Management?",
+      "options": [
+        "To completely eliminate all risks associated with vendors",
+        "To manage and mitigate risks associated with vendors",
+        "To transfer all risks associated with vendor to the vendors themselves",
+        "To ignore risks associated with vendors",
+        "To ensure all vendors are in compliance with all regulations"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-122",
+      "question": "What is the maximum number of levels that can be configured in the Vendor Risk Management hierarchy in ServiceNow?",
+      "options": [
+        "6",
+        "2",
+        "4",
+        "5",
+        "3"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-123",
+      "question": "Which option represents the correct sequence of steps for creating a new vendor risk assessment in ServiceNow Vendor Risk Management?",
+      "options": [
+        "Vendor Risk Assessment > Vendor Record > Vendor Risk Profile",
+        "Vendor Risk Profile > Vendor Record > Vendor Risk Assessment",
+        "Vendor Risk Profile > Vendor Risk Assessment > Vendor Record",
+        "Vendor Record > Vendor Risk Assessment > Vendor Risk Profile",
+        "Vendor Record > Vendor Risk Profile > Vendor Risk Assessment"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-124",
+      "question": "What is the difference between quantitative and qualitative risk assessment?",
+      "options": [
+        "Quantitative risk assessment uses numerical values to express risk, while qualitative risk assessment uses descriptive terms",
+        "Quantitative risk assessment is used for network security, while qualitative risk assessment is used for application security",
+        "Quantitative risk assessment is used for compliance assessment, while qualitative risk assessment is used for vulnerability assessment",
+        "Quantitative risk assessment is based on subjective judgment, while qualitative risk assessment is based on objective data"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-125",
+      "question": "What is a vendor portal?",
+      "options": [
+        "A software that manages vendor relationships",
+        "An online platform where vendors can submit invoices and track payments",
+        "A virtual marketplace where vendors can sell their products",
+        "A website where vendors can browse your products"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-126",
+      "question": "What is the difference between a dashboard and a report?",
+      "options": [
+        "A dashboard is used for financial reporting, while a report is used for operational reporting.",
+        "A dashboard provides a summary of data, while a report provides detailed information.",
+        "A report is more interactive and provides real-time data, while a dashboard is static and provides historical data.",
+        "A dashboard is more interactive and provides real-time data, while a report is static and provides historical data."
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-127",
+      "question": "Which GRC records can be related to an Entity?",
+      "options": [
+        "Entity Types",
+        "Vendors",
+        "Risks",
+        "Policies",
+        "Controls"
+      ],
+      "answer": [
+        0,
+        2,
+        4
+      ]
+    },
+    {
+      "id": "tprm-128",
+      "question": "Which of the following is a component of a Vendor Risk Management program in the VRM process?",
+      "options": [
+        "Ignoring risks associated with vendors",
+        "Minimizing regulatory compliance",
+        "Assessing the financial performance of vendors",
+        "Refusing to negotiate contract terms",
+        "Establishing a vendor code of conduct"
+      ],
+      "answer": [
+        4
+      ]
+    },
+    {
+      "id": "tprm-129",
+      "question": "Which of the following is NOT a component of a vulnerability management program?",
+      "options": [
+        "Vulnerability scanning",
+        "Patch management",
+        "Incident response",
+        "Risk assessment"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-130",
+      "question": "Which of the following is NOT a type of vendor risk assessment in ServiceNow Vendor Risk Management?",
+      "options": [
+        "Initial",
+        "Periodic",
+        "Special",
+        "Ad hoc",
+        "Ongoing"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-131",
+      "question": "Which of the following is NOT a step in the assessment process?",
+      "options": [
+        "Define the scope of the assessment",
+        "Identify the assets to be assessed",
+        "Assign blame for any security incidents",
+        "Identify potential threats and vulnerabilities"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-132",
+      "question": "Which of the following is a limitation of vulnerability scanning?",
+      "options": [
+        "It can detect both known and unknown vulnerabilities",
+        "It can provide false positives and false negatives",
+        "It can exploit vulnerabilities to determine their impact",
+        "It can be performed quickly and easily"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-133",
+      "question": "When defining catalog categories and subcategories, what are some good practices to follow?",
+      "options": [
+        "Align categories with CMDB classes where possible",
+        "Keep the number of top-level categories to 8-10",
+        "Remember that items can only be assigned to one category",
+        "Do not go to deep with subcategories: go only 1-2 levels deep"
+      ],
+      "answer": [
+        1,
+        3
+      ]
+    },
+    {
+      "id": "tprm-134",
+      "question": "Which table stores the third-party records?",
+      "options": [
+        "Company [core_company]",
+        "Department [cmn_department]",
+        "User [sys_user]",
+        "Vendor [sn_vdr_vendor]"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-135",
+      "question": "When the GRC: Policy and Compliance Management application is installed, what GRC related list displays on the Third-party Risk Issue record?",
+      "options": [
+        "Policies",
+        "Policy Exceptions",
+        "Configuration baseline",
+        "Citations"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-136",
+      "question": "As a final step before closing the Third-party Risk Assessment, what task(s) would the Risk Assessor typically do?",
+      "options": [
+        "Flag questions for follow up",
+        "Review comments and evaluates the risk",
+        "Create issues within the assessment",
+        "Perform a tiering assessment"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-137",
+      "question": "How are Third-party Risk questionnaires and document requests displayed on the Third-party Portal?",
+      "options": [
+        "As separate requests and can be assigned to different third-party contacts",
+        "As a single assessment assigned to a single engagement contact",
+        "As separate requests and can only be assigned to the same third-party contact",
+        "As a single assessment assigned to a single third-party contact"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-138",
+      "question": "What other record is created when an element classification is created?",
+      "options": [
+        "Classification component definition",
+        "Classification component criteria",
+        "Engagement component definition",
+        "Engagement component criteria"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-139",
+      "question": "To what do third parties have direct access?",
+      "options": [
+        "Update and respond to issues and tasks",
+        "View other third party’s assessment responses",
+        "Modify issue remediation workflow",
+        "View other third party’s issues and tasks"
+      ],
+      "answer": [
+        0
+      ],
+      "unverified": true
+    },
+    {
+      "id": "tprm-140",
+      "question": "What are benefits of creating Question Banks?",
+      "options": [
+        "An entire category and all its metrics from a question bank can be added to a questionnaire template",
+        "The auto assessment generator can randomly select metrics from a question bank to create a questionnaire template",
+        "Responses to individual metrics belonging to a question bank will be tracked in the question bank",
+        "Individual metrics from a question bank can be added to a questionnaire template"
+      ],
+      "answer": [
+        0,
+        3
+      ]
+    },
+    {
+      "id": "tprm-141",
+      "question": "What statements can be made about the Third-party tier?",
+      "options": [
+        "It is leveraged to decide whether to do business with a third-party, or not",
+        "It is leveraged to identify the appropriate assessment to send to the third-party",
+        "It is required to generate a third-party assessment",
+        "It can be manually set or set via the Third-party Tiering process"
+      ],
+      "answer": [
+        1,
+        3
+      ]
+    },
+    {
+      "id": "tprm-142",
+      "question": "What application provides the capability to define multiple levels of approvals for an employee with the sn_grc_appr.admin role?",
+      "options": [
+        "Approval Configurator",
+        "Multiple Approver Manager",
+        "Multi-level Approval Manager",
+        "IRQ ApprovalConfigurator"
+      ],
+      "answer": [
+        0
+      ],
+      "unverified": true
+    },
+    {
+      "id": "tprm-143",
+      "question": "What can be said concerning the number of third-party contacts?",
+      "options": [
+        "A third party must have one designated internal third-party manager",
+        "A third party can designate more than one contact as the primary, but must have a minimum of one primary contact",
+        "A third party can only designate one contact as the primary contact, but may have multiple non-primary contacts",
+        "A third party can only designate one contact as the primary and must have a minimum of one non-primary contact"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-144",
+      "question": "What are benefits of using the Third-party Portal?",
+      "options": [
+        "The Third-party Portal consolidates all communications and artifacts to a single system of truth",
+        "Third-party Portal allows the Third-party Risk Assessor team to reassign parts of a Inherent Risk Assessment",
+        "The Third-party Portal matches a database of documents to document requests",
+        "The Third-party Portal reduces risk for an organization by enabling secure communications with the third-party",
+        "The Third-party Portal can be leveraged by the third party to work with other partners"
+      ],
+      "answer": [
+        0,
+        3
+      ],
+      "unverified": true
+    },
+    {
+      "id": "tprm-145",
+      "question": "What is the minimum role required to create event-driven rules?",
+      "options": [
+        "sn_vdr_risk_asmt.vendor_risk_manager",
+        "sn_vdr_risk_asmt.vendor_risk_due_dilligence",
+        "sn_vdr_risk_asmt.vendor_risk_admin",
+        "sn_vdr_risk_asmt.vendor_risk_assessor"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-146",
+      "question": "If a Third-party Risk Issue is for internal use only, what states can be skipped?",
+      "options": [
+        "Analyze",
+        "Finalize with Third-party",
+        "New",
+        "Submitted to Third-party"
+      ],
+      "answer": [
+        1,
+        3
+      ]
+    },
+    {
+      "id": "tprm-147",
+      "question": "To which application do you navigate to customize the Third-party Portal?",
+      "options": [
+        "Service Portal Home",
+        "Service Portal",
+        "Now Experience Framework",
+        "Flow Designer"
+      ],
+      "answer": [
+        1
+      ],
+      "unverified": true
+    },
+    {
+      "id": "tprm-148",
+      "question": "How are Assessment Templates [sn_vdr_risk_asmt_template] related to Questionnaire Templates [asmt_metric_type]?",
+      "options": [
+        "By a reference field on Questionnaire Template [asmt_metric_type] (One-to-many)",
+        "By a reference field on Assessment Template [sn_vdr_risk_asmt_template] (Many-to-one)",
+        "By a calculated relationship (One-to-one)",
+        "By the M2M table [sn_vdr_risk_asmt_m2m_asmt_template_questionnaire_template] (Many-to-many)"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-149",
+      "question": "A Third-party Risk Manager needs to run a report displaying Third-party Assessments due. On which table would this report be run?",
+      "options": [
+        "[sn_vdr_risk_assessment]",
+        "[sn_vdr_risk_asmt_task]",
+        "[sn_vdr_risk_asmt_assessment]",
+        "[sn_vdr_risk_asmt_issue]"
+      ],
+      "answer": [
+        2
+      ],
+      "unverified": true
+    },
+    {
+      "id": "tprm-150",
+      "question": "As a primary contact, a new third-party contact can be added via 'Manage Team' and then selecting what?",
+      "options": [
+        "Invite Contact",
+        "Request Contact",
+        "New Contact",
+        "Add Contact"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-151",
+      "question": "What functions can be performed in the Third-party Portal?",
+      "options": [
+        "Manage assessment deadlines",
+        "Complete assessments",
+        "General project management",
+        "Host web meetings"
+      ],
+      "answer": [
+        0,
+        1
+      ],
+      "unverified": true
+    },
+    {
+      "id": "tprm-152",
+      "question": "When will the tiering value be updated on the third-party record?",
+      "options": [
+        "When the inherent risk assessment record state is Responses Received",
+        "When all inherent risk assessments have been completed",
+        "When the inherent risk assessment record state is closed",
+        "When all inherent risk assessments have been sent"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-153",
+      "question": "What does accepting an Issue mark?",
+      "options": [
+        "An implication that the known control failure is unimportant",
+        "An intention to create an exception for a known control failure or risk",
+        "Attempted remediation failed",
+        "Special third parties get an exception"
+      ],
+      "answer": [
+        1
+      ],
+      "unverified": true
+    },
+    {
+      "id": "tprm-154",
+      "question": "What is the relationship between records in the third-party element table and records in the third-party element classification table?",
+      "options": [
+        "For each element, there can be many classifications.",
+        "The ratio relationship can vary. An element could have no classification, one classification, or many classifications.",
+        "For each classification, there can be only one element.",
+        "Many elements could have the same classification"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-155",
+      "question": "What methods in the baseline can be used to assign a Third-party Risk Assessment to a third party?",
+      "options": [
+        "Manual",
+        "Automated based on Third-party categorization",
+        "Automated based on Security Score rule",
+        "Automated based on Third-party Tier rule",
+        "Automated based on Business Services supported by the third party"
+      ],
+      "answer": [
+        0,
+        1,
+        3
+      ]
+    },
+    {
+      "id": "tprm-156",
+      "question": "What statement best describes what happens when a question in a Third-party Risk Assessment is related to a Control Objective?",
+      "options": [
+        "Control Objectives with the Vendor Entity are automatically assigned a Question from a Questionnaire Assessment",
+        "The Control Objective is updated as the third party completes the questionnaire",
+        "Associated Controls are marked automatically as Non-Compliant or Compliant based on the response of the third party",
+        "A Question can only be related to one Control Objective at a time"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-157",
+      "question": "What are the application scopes to be considered when making changes to the Vendor Management Workspace?",
+      "options": [
+        "Vendor Management Workspace UI Components (sn_itsm_vend_comp)",
+        "Common Core Workspace (cmn_ws)",
+        "GRC: Third-party Risk Management Workspace (sn_tprm_ws)",
+        "GRC: Vendor Risk Management Workspace (sn_vrm_ws)",
+        "GRC: Vendor Portal (sn_svdp)"
+      ],
+      "answer": [
+        2,
+        3
+      ]
+    },
+    {
+      "id": "tprm-158",
+      "question": "In addition to direct third-party assessments, what other hierarchical entities can contribute to the overall third-party risk rating?",
+      "options": [
+        "Advanced risk assessments",
+        "Engagements",
+        "Child third parties",
+        "Entity class rules"
+      ],
+      "answer": [
+        1,
+        2
+      ]
+    },
+    {
+      "id": "tprm-159",
+      "question": "What can be created with the Template Designer?",
+      "options": [
+        "Third-party Risk Assessment",
+        "Assessment Template",
+        "Document Request Template",
+        "Questionnaire Template"
+      ],
+      "answer": [
+        2,
+        3
+      ]
+    },
+    {
+      "id": "tprm-160",
+      "question": "What do third-party risk event-driven rules do?",
+      "options": [
+        "Auto-generate issue records when third parties are not compliant",
+        "Auto-generate and send questionnaires and document requests to engagements and third parties",
+        "Auto-generate engagements when risk intelligence scores fall below specified levels",
+        "Auto-generate and send email notifications to third parties for engagements"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-161",
+      "question": "What are the benefits of performing a Third-party Risk Assessment?",
+      "options": [
+        "To have a stronger negotiating position for future contracts",
+        "To have third parties demonstrate that they operate their business at an acceptable risk level to your organization",
+        "To understand with whom you are working when you partner with third parties",
+        "To put the ownership on the third party to prove that they manage risk at a level with which the third party is comfortable"
+      ],
+      "answer": [
+        1,
+        2
+      ]
+    },
+    {
+      "id": "tprm-162",
+      "question": "What are the element classification values in the ServiceNow baseline for Third-party Risk Management?",
+      "options": [
+        "Service",
+        "Principal",
+        "Product",
+        "Manufacturer",
+        "Facility"
+      ],
+      "answer": [
+        0,
+        2,
+        4
+      ]
+    },
+    {
+      "id": "tprm-163",
+      "question": "What type of record is each question in an assessment?",
+      "options": [
+        "GRC Task[sn_grc_task]",
+        "Assessment Metric [asmt_metric]",
+        "Task [task]",
+        "Assessment Instance [asmt_assessment_instance]"
+      ],
+      "answer": [
+        1
+      ]
+    },
+    {
+      "id": "tprm-164",
+      "question": "What purpose do ServiceNow third-party risk engagements serve?",
+      "options": [
+        "They give a third-party risk manager a way of scheduling workshops with the customer to help the third party become compliant",
+        "They give a way for a third-party risk manager to assess risks and measure third-party CSAT performance",
+        "They give a third-party risk manager a way to assess risks at the products or services level",
+        "They give a third-party risk manager a way to assess the validity of the third-party assessment responses"
+      ],
+      "answer": [
+        2
+      ]
+    },
+    {
+      "id": "tprm-165",
+      "question": "What are ways that the third-party records can be created?",
+      "options": [
+        "Through the Third-party Portal",
+        "Through integration with an existing supplier management system",
+        "From existing operator records",
+        "By manual data entry or through a due diligence onboarding request",
+        "By importing data"
+      ],
+      "answer": [
+        1,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "tprm-166",
+      "question": "When should the third-party risk assessor create Issues based on the third-party assessment response?",
+      "options": [
+        "Any time, as long as at least one question has been answered",
+        "When the assessment is in theSubmitted to Third-party state",
+        "When the assessment is in the \"Generating Observations\" state",
+        "When the assessment is in the \"Finalizing with Third-party\" state"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-167",
+      "question": "A requirement of this customer’s implementation is to be able to track third-party subsidiaries separately from the third party but to roll up the scoring to the (primary) third party. What action do you take to fulfill this requirement?",
+      "options": [
+        "In the Related Links of the (primary) third party record, click Add Child third party and add each subsidiary",
+        "Populate the Children field on the (primary) third party record with all of the subsidiaries",
+        "From the Navigation, select Third party Risk, select Third party, then select All Child Third parties; Select New to create a new child third party record for each subsidiary",
+        "On the Child third party related list of the (primary) third party, click the New button and add a third party record for each subsidiary",
+        "In addition to the (primary) third party record, create a third party record for each subsidiary and fill the Parent field with the name of the (primary) third party"
+      ],
+      "answer": [
+        4
+      ]
+    },
+    {
+      "id": "tprm-168",
+      "question": "What types of requests can be made by an employee selecting the Request third-party risk due diligence option?",
+      "options": [
+        "Duplicate an engagement",
+        "Cancel an engagement",
+        "Offboard an engagement with due diligence",
+        "Reassess an existing engagement for contract renewal",
+        "Reassess an existing engagement",
+        "Onboard a new engagement"
+      ],
+      "answer": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "id": "tprm-169",
+      "question": "What can primary third-party contacts do in the Third-party Portal?",
+      "options": [
+        "Manage assessment templates",
+        "Respond to issues",
+        "Manage third-party contacts",
+        "Customize the Third-party Portal",
+        "Respond to assessments"
+      ],
+      "answer": [
+        1,
+        2,
+        4
+      ]
+    },
+    {
+      "id": "tprm-170",
+      "question": "Which related list is used when relating a Third party assessment question to a Control Objective record?",
+      "options": [
+        "Questionnaire templates",
+        "Category metrics",
+        "Third-party questions",
+        "Assessment metrics"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-171",
+      "question": "Elements can be defined on an engagement. What do these elements represent?",
+      "options": [
+        "An external organization on which the third party relies to provide goods, services, or support",
+        "Component criteria for the engagement applicable to the third party's delivery of goods, services, or support.",
+        "Risk areas defined for the engagement applicable to the third party's delivery of goods, services, or support.",
+        "The goods, services, or support that is provided by the third party"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-172",
+      "question": "What is the default value appended to the instance URL to access the scoped Third-party Portal according to the sn_vdr_risk_asmt.vendor_portal_endpoint system property?",
+      "options": [
+        "/tpp",
+        "/tpvp",
+        "/svp",
+        "/svdp"
+      ],
+      "answer": [
+        3
+      ]
+    },
+    {
+      "id": "tprm-173",
+      "question": "What create actions can be triggered from the Rule Actions tab of a Provider-Based Submission Rule?",
+      "options": [
+        "Create assessment",
+        "Create issue",
+        "Create third party",
+        "Create primary contact",
+        "Create task",
+        "Create recipient"
+      ],
+      "answer": [
+        0,
+        2,
+        3
+      ]
+    },
+    {
+      "id": "tprm-174",
+      "question": "Third-party contacts are stored in the vm_vdr_contact table, which extends from which table?",
+      "options": [
+        "sys_user",
+        "task",
+        "ext_user",
+        "core_company"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-175",
+      "question": "To display your company name in the portal, change which ServiceNow property?",
+      "options": [
+        "sn_vdr_risk_asmt.company.name",
+        "sn_risk_asmt.company.name",
+        "sn_vdr_risk_.company.name",
+        "sn_vdr_risk_asmt.company"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-176",
+      "question": "What actions must be taken before a risk intelligence report can be requested?",
+      "options": [
+        "A risk intelligence sample report must be downloaded by the user",
+        "The Order reports field of the provider record must be set to true",
+        "The Sanctioned report request field of the provider record must be set to yes",
+        "A risk intelligence request type record must be created for the provider",
+        "The copyright agreement field on the Risk Intelligence Report request form must be set to true."
+      ],
+      "answer": [
+        1,
+        3
+      ]
+    },
+    {
+      "id": "tprm-177",
+      "question": "What will be available to Supplier Lifecycle Operations (SLO) from Third-party Risk Management (TPRM) once suppliers respond to assessments if during onboarding, SLO requests due diligence on a supplier from TPRM?",
+      "options": [
+        "Final risk scores",
+        "Managed documents",
+        "News and other articles",
+        "Contract value"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-178",
+      "question": "In which table are Third-party Risk Tasks stored?",
+      "options": [
+        "sn_vdr_risk_asmt_task",
+        "sn_vdr_risk_asmt_activity",
+        "sn_vdr_risk_task",
+        "sn_vdr_risk_assessment_task"
+      ],
+      "answer": [
+        0
+      ]
+    },
+    {
+      "id": "tprm-179",
+      "question": "By default, when are reminder notifications for pending assessments sent to the third party contact?",
+      "options": [
+        "14 day after due date",
+        "30 days prior to due date",
+        "3 days prior to due date",
+        "7 days prior to due date"
+      ],
+      "answer": [
+        2,
+        3
+      ]
+    },
+    {
+      "id": "tprm-180",
+      "question": "When should a Third-party Risk Issue be created?",
+      "options": [
+        "When identifying a risk to a business",
+        "When the third party does not include documentation required as part of an assessment",
+        "When a response to a question in the risk assessment is not satisfactory",
+        "When there is more than one third-party contact submitting responses",
+        "When there are items that require additional follow-up"
+      ],
+      "answer": [
+        1,
+        2,
+        4
+      ]
+    }
+  ]
+}

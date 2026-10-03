@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tests — ServiceNow Exam Training</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #0a0f1a; color: #e6ecf5; margin: 0; padding: 24px 16px; }
+    main { max-width: 860px; margin: 0 auto; }
+    h1 { font-size: 1.4rem; margin: 0 0 8px; }
+    #summary { font-weight: 700; padding: 12px 16px; border-radius: 10px; margin: 12px 0 20px; }
+    #summary.pass { background: rgba(74, 222, 128, .12); color: #4ade80; }
+    #summary.fail { background: rgba(248, 113, 113, .12); color: #f87171; }
+    h2 { font-size: 1rem; margin: 20px 0 6px; color: #a0acc0; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { padding: 4px 0; font-size: .92rem; border-bottom: 1px solid #1f2a40; }
+    .pass b { color: #4ade80; } .fail b { color: #f87171; }
+    .detail { display: block; color: #fca5a5; font-size: .85rem; margin-left: 52px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Unit tests</h1>
+  <div id="summary">Running…</div>
+  <div id="out"></div>
+</main>
+
+<script src="../js/storage.js"></script>
+<script src="../js/bank.js"></script>
+<script src="../js/weighting.js"></script>
+<script src="../js/practice.js"></script>
+<script src="../js/exam.js"></script>
+<script src="tprm-data.js"></script>
+<script>
+(function () {
+  'use strict';
+  // Keep tests away from real user data.
+  SET.storage.setPrefix('set-test:v1:');
+
+  var B = SET.bank, W = SET.weighting, P = SET.practice, E = SET.exam;
+  var out = document.getElementById('out');
+  var passed = 0, failed = 0, list = null;
+
+  function group(name) {
+    var h = document.createElement('h2'); h.textContent = name; out.appendChild(h);
+    list = document.createElement('ul'); out.appendChild(list);
+  }
+  function report(ok, name, detail) {
+    var li = document.createElement('li');
+    li.className = ok ? 'pass' : 'fail';
+    var b = document.createElement('b'); b.textContent = ok ? 'PASS ' : 'FAIL ';
+    li.appendChild(b);
+    li.appendChild(document.createTextNode(name));
+    if (!ok && detail) { var d = document.createElement('span'); d.className = 'detail'; d.textContent = detail; li.appendChild(d); }
+    list.appendChild(li);
+    if (ok) passed++; else failed++;
+  }
+  function test(name, fn) {
+    try { fn(); report(true, name); }
+    catch (e) { report(false, name, e && e.message ? e.message : String(e)); }
+  }
+  function assert(cond, msg) { if (!cond) throw new Error(msg || 'assertion failed'); }
+  function eq(a, b, msg) {
+    var x = JSON.stringify(a), y = JSON.stringify(b);
+    if (x !== y) throw new Error((msg ? msg + ': ' : '') + 'expected ' + y + ', got ' + x);
+  }
+  function near(a, b, eps, msg) { if (Math.abs(a - b) > (eps || 1e-9)) throw new Error((msg ? msg + ': ' : '') + 'expected ≈' + b + ', got ' + a); }
+  function hasError(res, fragment) {
+    return res.errors.some(function (e) { return e.indexOf(fragment) >= 0; });
+  }
+  function bank(questions, extra) {
+    var b = { title: 'T', questions: questions };
+    if (extra) Object.keys(extra).forEach(function (k) { b[k] = extra[k]; });
+    return b;
+  }
+  function q(id, answer, n) {
+    var opts = []; for (var i = 0; i < (n || 4); i++) opts.push('Option ' + i + ' of ' + id);
+    return { id: id, question: 'Question ' + id + '?', options: opts, answer: answer };
+  }
+  function seeded(seed) { // mulberry32
+    return function () {
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      var t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function prog(seen, correct, streak, recent, lastCorrect) {
+    return { seen: seen, correct: correct, streak: streak, recent: recent, lastSeen: '2026-01-01T00:00:00.000Z', lastCorrect: lastCorrect };
+  }
+
+  /* 1. Validation */
+  group('1. Validation');
+  test('current format is valid', function () {
+    var r = B.normalise(bank([q('a', [1]), q('b', [0, 2])], { description: ' d ', exam: { questionCount: 1, timeLimitMinutes: 10, passMarkPercent: 80 } }), 'x.json');
+    assert(r.ok, r.errors.join('; '));
+    eq(r.bank.questions.length, 2);
+    eq(r.bank.description, 'd');
+    eq(r.bank.exam, { questionCount: 1, timeLimitMinutes: 10, passMarkPercent: 80 });
+  });
+  test('legacy top-level array {q,o,a,u} converts', function () {
+    var r = B.normalise([{ q: ' What? ', o: ['x', 'y', 'z'], a: [2], u: true }], 'legacy.json');
+    assert(r.ok, r.errors.join('; '));
+    var x = r.bank.questions[0];
+    eq(x.question, 'What?'); eq(x.options, ['x', 'y', 'z']); eq(x.answer, [2]); eq(x.unverified, true);
+    eq(r.bank.title, 'legacy');
+  });
+  test('legacy object with questions converts', function () {
+    var r = B.normalise({ title: 'L', questions: [{ q: 'Q1', o: ['a', 'b'], a: 0 }] }, 'l.json');
+    assert(r.ok, r.errors.join('; '));
+    eq(r.bank.questions[0].answer, [0]);
+  });
+  test('letter answers normalise ("b", ["A","C"])', function () {
+    var r = B.normalise(bank([q('a', 'b'), q('b', ['C', 'a']), q('c', [3, 'A', 0])]), 'x.json');
+    assert(r.ok, r.errors.join('; '));
+    eq(r.bank.questions[0].answer, [1]);
+    eq(r.bank.questions[1].answer, [0, 2]);
+    eq(r.bank.questions[2].answer, [0, 3]);
+  });
+  test('out-of-range answer is an error with position', function () {
+    var qs = []; for (var i = 1; i <= 14; i++) qs.push(q('tprm-' + ('00' + i).slice(-3), [0]));
+    qs[13].answer = [5];
+    var r = B.normalise(bank(qs), 'x.json');
+    assert(!r.ok);
+    assert(hasError(r, 'Question 14 (id tprm-014): answer index 5 is out of range (4 options).'), r.errors.join('; '));
+  });
+  test('out-of-range letter is an error', function () {
+    var r = B.normalise(bank([q('a', 'E')]), 'x.json');
+    assert(!r.ok && hasError(r, 'out of range'), r.errors.join('; '));
+  });
+  test('empty options is an error', function () {
+    var r = B.normalise(bank([{ id: 'a', question: 'Q', options: [], answer: 0 }]), 'x.json');
+    assert(!r.ok && hasError(r, 'options'), r.errors.join('; '));
+  });
+  test('duplicate ids are an error', function () {
+    var r = B.normalise(bank([q('a', 0), q('a', 1)]), 'x.json');
+    assert(!r.ok && hasError(r, 'already used'), r.errors.join('; '));
+  });
+  test('missing title falls back to file name', function () {
+    var r = B.normalise({ questions: [q('a', 0)] }, 'C:\\banks\\my-bank.json');
+    eq(r.bank.title, 'my-bank');
+  });
+  test('invalid JSON blocks import', function () {
+    var r = B.parse('{ nope', 'x.json');
+    assert(!r.ok && hasError(r, 'not valid JSON'));
+  });
+  test('duplicate option text, duplicate question text and unknown fields are warnings', function () {
+    var a = q('a', 0); a.options[1] = ' option 0 OF a '; a.extra = 1;
+    var b = q('b', 0); b.question = 'Question a?';
+    var r = B.normalise(bank([a, b], { foo: 1 }), 'x.json');
+    assert(r.ok, r.errors.join('; '));
+    assert(r.warnings.length >= 4, r.warnings.join('; '));
+  });
+  test('summary text', function () {
+    var a = q('a', 0); a.unverified = true;
+    var r = B.normalise(bank([a, q('b', 1)]), 'x.json');
+    eq(B.summaryText(r.bank, 0), "Bank 'T', 2 questions, 1 unverified, 0 warnings");
+  });
+  test('exam questionCount is clamped to bank size', function () {
+    var r = B.normalise(bank([q('a', 0), q('b', 0)]), 'x.json');
+    eq(r.bank.exam.questionCount, 2);
+  });
+
+  /* 2. Identity */
+  group('2. Identity');
+  test('whitespace/case variants give the same fallback id', function () {
+    eq(B.fallbackId('  What   IS\tthis? '), B.fallbackId('what is this?'));
+    assert(/^h-[0-9a-f]{8}$/.test(B.fallbackId('x')));
+  });
+  test('FNV-1a known value', function () { eq(B.fnv1a(''), '811c9dc5'); eq(B.fnv1a('a'), 'e40c292c'); });
+  test('questions without ids get stable fallback ids', function () {
+    var r1 = B.normalise([{ question: 'Hello  World', options: ['a', 'b'], answer: 0 }], 'x.json');
+    var r2 = B.normalise([{ question: 'hello world', options: ['a', 'b'], answer: 0 }], 'x.json');
+    eq(r1.bank.questions[0].id, r2.bank.questions[0].id);
+  });
+
+  /* 3. Merge on update */
+  group('3. Merge on update');
+  test('kept / new / removed counts and progress', function () {
+    var oldB = B.normalise(bank([q('a', 0), q('b', 0), q('c', 0)]), 'x.json').bank;
+    var newB = B.normalise(bank([q('b', 0), q('c', 1), q('d', 0), q('e', 0)]), 'x.json').bank;
+    var progress = { a: prog(1, 1, 1, [true], true), b: prog(2, 1, 0, [true, false], false) };
+    var m = B.mergeUpdate(oldB, newB, progress);
+    eq([m.kept, m.added, m.removed], [2, 2, 1]);
+    eq(m.progress.b, progress.b);
+    assert(!m.progress.a, 'removed id progress deleted');
+    assert(!m.progress.d, 'new id starts as New');
+  });
+
+  /* 4. Weakness and weight */
+  group('4. Weakness and weight');
+  var cases = [
+    { name: 'new', p: null, status: 'new', w: 0.75, weights: [1, 3.25, 6.25] },
+    { name: 'mastered', p: prog(5, 4, 3, [false, true, true, true], true), status: 'mastered', w: 0, weights: [1, 1, 1] },
+    { name: 'weak (2/3 recent, last wrong → 0.6 floor)', p: prog(3, 2, 0, [true, true, false], false), status: 'weak', w: 0.6, weights: [1, 2.8, 5.2] },
+    { name: 'weak (all wrong)', p: prog(2, 0, 0, [false, false], false), status: 'weak', w: 1, weights: [1, 4, 8] },
+    { name: 'learning (1/2 recent)', p: prog(2, 1, 1, [false, true], true), status: 'learning', w: 0.5, weights: [1, 2.5, 4.5] },
+    { name: 'learning (last 5 of 7)', p: prog(7, 4, 2, [true, true, false, false, true, true, true], true), status: 'learning', w: 0.4, weights: [1, 2.2, 3.8] },
+    { name: 'mastered then missed → weak', p: W.record(prog(3, 3, 3, [true, true, true], true), false), status: 'weak', w: 0.6, weights: [1, 2.8, 5.2] }
+  ];
+  cases.forEach(function (c) {
+    test(c.name + ': status, w and weight at F = 1, 4, 8', function () {
+      eq(W.status(c.p), c.status, 'status');
+      near(W.weakness(c.p), c.w, 1e-9, 'w');
+      [1, 4, 8].forEach(function (F, i) { near(W.weight(c.p, F), c.weights[i], 1e-9, 'weight F=' + F); });
+    });
+  });
+
+  /* 5. Sampling */
+  group('5. Sampling');
+  var ids30 = []; for (var i = 0; i < 30; i++) ids30.push('q' + i);
+  test('no duplicates', function () {
+    for (var t = 0; t < 200; t++) {
+      var s = W.weightedSample(ids30, function () { return 1 + Math.random() * 7; }, 10);
+      var seen = {}; s.forEach(function (x) { assert(!seen[x], 'duplicate ' + x); seen[x] = 1; });
+      eq(s.length, 10);
+    }
+  });
+  test('returns min(n, pool)', function () {
+    eq(W.weightedSample(ids30, function () { return 1; }, 50).length, 30);
+    eq(W.weightedSample([], function () { return 1; }, 5).length, 0);
+  });
+  test('20,000 single draws from {4, 1} ≈ 4:1 (±10%)', function () {
+    var a = 0, b = 0;
+    for (var t = 0; t < 20000; t++) {
+      var s = W.weightedSample(['A', 'B'], function (x) { return x === 'A' ? 4 : 1; }, 1);
+      if (s[0] === 'A') a++; else b++;
+    }
+    var ratio = a / b;
+    assert(ratio >= 3.6 && ratio <= 4.4, 'ratio ' + ratio.toFixed(3));
+  });
+  test('Strong focus favours weak questions', function () {
+    var qs = ids30.map(function (id) { return { id: id }; });
+    var progress = {};
+    ids30.forEach(function (id, i) { progress[id] = i < 5 ? prog(2, 0, 0, [false, false], false) : prog(3, 3, 3, [true, true, true], true); });
+    var weakHits = 0;
+    for (var t = 0; t < 2000; t++) {
+      var pick = W.selectPractice(qs, progress, 5, 2).ids;
+      weakHits += pick.filter(function (id) { return Number(id.slice(1)) < 5; }).length;
+    }
+    // Weak share of weight: 5*4 / (5*4 + 25*1) = 44% of draws ≫ the 17% uniform share.
+    assert(weakHits / (2000 * 5) > 0.3, 'weak share ' + (weakHits / 10000).toFixed(3));
+  });
+
+  /* 6. Weak only */
+  group('6. Weak only');
+  var wq = ['m1', 'm2', 'm3', 'x1', 'x2'].map(function (id) { return { id: id }; });
+  var mp = { m1: prog(3, 3, 3, [true, true, true], true), m2: prog(4, 4, 4, [true, true, true, true], true), m3: prog(3, 3, 3, [true, true, true], true), x1: prog(1, 0, 0, [false], false) };
+  test('pool excludes Mastered', function () {
+    for (var t = 0; t < 100; t++) {
+      var r = W.selectPractice(wq, mp, 2, 4);
+      eq(r.ids.slice().sort(), ['x1', 'x2']);
+      eq(r.notice, null);
+    }
+  });
+  test('fills from Mastered when the pool is too small', function () {
+    var r = W.selectPractice(wq, mp, 4, 4);
+    eq(r.ids.length, 4);
+    assert(r.ids.indexOf('x1') >= 0 && r.ids.indexOf('x2') >= 0, 'pool included');
+    eq(r.ids.filter(function (id) { return id[0] === 'm'; }).length, 2);
+  });
+  test('falls back to Strong when everything is mastered', function () {
+    var all = { m1: mp.m1, m2: mp.m2, m3: mp.m3, x1: mp.m1, x2: mp.m1 };
+    var r = W.selectPractice(wq, all, 3, 4);
+    eq(r.ids.length, 3);
+    eq(r.notice, W.ALL_MASTERED_NOTICE);
+  });
+
+  /* 7. Attempt counting */
+  group('7. Attempt counting');
+  var tb = B.normalise(bank([q('a', [1]), q('b', [0, 2]), q('c', [3])]), 'x.json').bank;
+  tb.id = 'test-bank';
+  var tmap = B.byId(tb);
+  test('round 1 counts; retry rounds do not change progress', function () {
+    var progress = {};
+    var s = P.createSession(tb, ['a', 'b', 'c'], progress, { focus: 2 });
+    P.applyAnswer(s, progress, tmap.a, [0], 't1');    // wrong
+    P.applyAnswer(s, progress, tmap.b, [2, 0], 't1'); // right (order-insensitive)
+    P.applyAnswer(s, progress, tmap.c, [3], 't1');    // right
+    eq(progress.a.seen, 1); eq(progress.a.streak, 0); eq(progress.a.lastCorrect, false);
+    eq(progress.b.correct, 1); eq(progress.b.streak, 1);
+    P.finishRound(s);
+    eq(P.firstAttemptCorrect(s), 2);
+    var before = JSON.stringify(progress);
+    P.startRetry(s);
+    eq(s.queue, ['a']);
+    P.applyAnswer(s, progress, tmap.a, [1], 't2');
+    eq(JSON.stringify(progress), before, 'progress unchanged in retry');
+    assert(s.solved.a, 'retry still marks solved');
+  });
+  test('partial multi-answer selection is wrong (all-or-nothing)', function () {
+    assert(!W.isCorrect([0], [0, 2]));
+    assert(!W.isCorrect([0, 1, 2], [0, 2]));
+    assert(W.isCorrect([2, 0], [0, 2]));
+  });
+  test('exam answers update progress; unanswered are wrong', function () {
+    var progress = { a: prog(3, 3, 3, [true, true, true], true) };
+    var s = E.createSession(tb, { count: 3, timeLimitMinutes: 90, passMarkPercent: 60 }, seeded(1), 1000);
+    s.answers = { a: [0], b: [0, 2] }; // a wrong, b right, c unanswered
+    var r = E.grade(s, tmap, progress, 61000);
+    eq(r.correct, 1); eq(r.total, 3); eq(r.scorePercent, 33); eq(r.passed, false);
+    eq(r.timeUsedSec, 60);
+    eq(progress.a.streak, 0, 'streak resets on a miss');
+    eq(W.status(progress.a), 'weak');
+    eq(progress.b.seen, 1);
+    assert(!progress.c, 'unanswered not recorded');
+  });
+  test('streak resets on a miss and rebuilds to Mastered', function () {
+    var p = null;
+    [true, true, false, true, true, true].forEach(function (c) { p = W.record(p, c); });
+    eq(p.streak, 3); eq(p.seen, 6); eq(p.correct, 5); eq(W.status(p), 'mastered');
+  });
+  test('recent keeps the last 10', function () {
+    var p = null;
+    for (var i = 0; i < 15; i++) p = W.record(p, i % 2 === 0);
+    eq(p.recent.length, 10);
+  });
+
+  /* 8. Option shuffle */
+  group('8. Option shuffle');
+  test('remapped answer still checks as correct', function () {
+    var rng = seeded(42);
+    for (var t = 0; t < 500; t++) {
+      var n = 2 + Math.floor(rng() * 9);
+      var answer = W.shuffle(Array.from({ length: n }, function (_, i) { return i; }), rng).slice(0, 1 + Math.floor(rng() * n)).sort(function (a, b) { return a - b; });
+      var order = W.optionOrder(n, true, rng);
+      var shown = W.toDisplay(order, answer);
+      var back = W.toOriginal(order, shown);
+      assert(W.isCorrect(back, answer), 'order ' + order + ' answer ' + answer);
+      shown.forEach(function (d) { assert(answer.indexOf(order[d]) >= 0, 'display position maps to an answer'); });
+    }
+  });
+  test('no shuffle keeps original order', function () { eq(W.optionOrder(4, false), [0, 1, 2, 3]); });
+
+  /* 9. Real bank */
+  group('9. banks/tprm.json');
+  test('validates with 0 errors and 180 questions', function () {
+    var r = B.normalise(JSON.parse(JSON.stringify(window.TPRM_BANK)), 'tprm.json');
+    eq(r.errors.length, 0, r.errors.slice(0, 3).join('; '));
+    eq(r.bank.questions.length, 180);
+    eq(r.bank.title, 'ServiceNow CIS-TPRM practice');
+  });
+
+  var summary = document.getElementById('summary');
+  summary.textContent = failed ? failed + ' failed, ' + passed + ' passed' : 'All ' + passed + ' tests passed';
+  summary.className = failed ? 'fail' : 'pass';
+  document.title = (failed ? 'FAIL' : 'PASS') + ' — tests';
+})();
+</script>
+</body>
+</html>

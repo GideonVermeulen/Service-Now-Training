@@ -1,0 +1,21 @@
+{
+  "title": "My exam bank",
+  "description": "What this bank covers.",
+  "exam": { "questionCount": 60, "timeLimitMinutes": 90, "passMarkPercent": 70 },
+  "questions": [
+    {
+      "id": "q001",
+      "question": "Single-answer example: which option is correct?",
+      "options": ["First option", "Second option", "Third option", "Fourth option"],
+      "answer": "B",
+      "explanation": "Optional. Shown after you answer.",
+      "topic": "Optional topic name"
+    },
+    {
+      "id": "q002",
+      "question": "Multi-answer example: which TWO options are correct?",
+      "options": ["First option", "Second option", "Third option", "Fourth option", "Fifth option"],
+      "answer": ["A", "D"]
+    }
+  ]
+}
