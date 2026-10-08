@@ -30,26 +30,33 @@
       index: 0,
       timeLimitMinutes: opts.timeLimitMinutes,
       passMarkPercent: opts.passMarkPercent,
-      maxIntervalDays: typeof opts.maxIntervalDays === 'number' ? opts.maxIntervalDays : null,
       topicWeights: (bank.exam && bank.exam.topicWeights) || null,
       endsAt: opts.timeLimitMinutes > 0 ? now + opts.timeLimitMinutes * 60000 : null,
       warned: 0
     };
   }
 
-  // Scores the exam and applies every answer to progress as Good (right) or Again (wrong).
-  // Unanswered = wrong (not recorded).
+  // Scores the exam and applies every answer to progress as Good (right) or Again (wrong), adding
+  // each to the review log. Unanswered = wrong (not recorded). The exam-date cap comes from the
+  // bank's current exam date (older saved sessions may carry maxIntervalDays; it is ignored).
   function grade(session, qmap, progress, now) {
     now = now || Date.now();
     var when = new Date(now).toISOString();
+    var entry = SET.storage.getEntry(session.bankId);
+    var examDate = entry && entry.examDate;
+    var logged = [];
     var items = session.ids.map(function (id) {
       var q = qmap[id];
       var sel = session.answers[id] || [];
       var answered = sel.length > 0;
       var correct = answered && W.isCorrect(sel, q.answer);
-      if (answered) progress[id] = W.record(W.get(progress, id), correct ? 3 : 1, when, session.maxIntervalDays);
+      if (answered) {
+        progress[id] = W.record(W.get(progress, id), correct ? 3 : 1, when, W.examCap(examDate, id, now));
+        logged.push({ id: id, when: now, grade: correct ? 3 : 1, mode: 'e' });
+      }
       return { id: id, selected: sel, answered: answered, correct: correct, flagged: !!session.flags[id] };
     });
+    SET.storage.logReviews(session.bankId, logged);
     var correct = items.filter(function (i) { return i.correct; }).length;
     var answeredCount = items.filter(function (i) { return i.answered; }).length;
     var predicted = typeof session.predicted === 'number' ? session.predicted : null;
@@ -135,11 +142,9 @@
     var bank = SET.storage.getBank(bankId);
     if (!bank) return;
     SET.ui.ensureNoActive(function () {
-      var entry = SET.storage.getEntry(bankId);
       var session = createSession(bank, {
         count: opts.count, timeLimitMinutes: opts.timeLimitMinutes, passMarkPercent: opts.passMarkPercent,
-        shuffle: SET.storage.getSettings().shuffleOptions,
-        maxIntervalDays: W.daysUntil(entry && entry.examDate)
+        shuffle: SET.storage.getSettings().shuffleOptions
       });
       // The uncalibrated estimate for these exact questions, compared with the result to calibrate readiness.
       var qmap = SET.bank.byId(bank);

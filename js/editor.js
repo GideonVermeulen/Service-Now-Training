@@ -32,6 +32,7 @@
     if (reset) {
       var progress = S.getProgress(bankId);
       if (progress[edited.id]) { delete progress[edited.id]; S.saveProgress(bankId, progress, false); }
+      S.removeReviews(bankId, [edited.id]); // its history was for a different right answer
     }
     return { ok: true, resetProgress: reset };
   }
@@ -85,7 +86,58 @@
     if (!S.saveBank(bank)) return { ok: false, error: S.QUOTA_MSG };
     var progress = S.getProgress(bankId);
     if (progress[qid]) { delete progress[qid]; S.saveProgress(bankId, progress, false); }
+    S.removeReviews(bankId, [qid]);
     return { ok: true };
+  }
+
+  // Applies bank.cleanDuplicates to a stored bank: removed copies lose their progress and review
+  // history; questions with a repeated option keep theirs (their right answer is the same text).
+  // Returns the clean-up result, with ok: false when it couldn't be saved.
+  function cleanBank(bankId) {
+    var S = SET.storage;
+    var bank = S.getBank(bankId);
+    if (!bank) return { ok: false, removedIds: [], fixedIds: [], manual: [] };
+    var progress = S.getProgress(bankId);
+    var res = SET.bank.cleanDuplicates(bank, progress);
+    res.ok = true;
+    if (!res.removedIds.length && !res.fixedIds.length) return res;
+    res.bank.editedAt = new Date().toISOString(); // an in-app change: a re-upload of the old file asks first
+    if (!S.saveBank(res.bank)) { res.ok = false; return res; }
+    var dropped = res.removedIds.filter(function (id) { return progress[id]; });
+    if (dropped.length) {
+      dropped.forEach(function (id) { delete progress[id]; });
+      S.saveProgress(bankId, progress, false);
+    }
+    S.removeReviews(bankId, res.removedIds);
+    return res;
+  }
+
+  // Resolves one group of same-worded questions (bank.duplicateGroups).
+  // keepId: keep that question and delete the rest of the group, with their progress and history.
+  // keepId null: they are different questions; keep all and don't ask about this wording again.
+  // Returns { ok, removed: [ids] }.
+  function resolveDuplicates(bankId, key, keepId) {
+    var S = SET.storage;
+    var bank = S.getBank(bankId);
+    if (!bank) return { ok: false, removed: [] };
+    var group = bank.questions.filter(function (q) { return SET.bank.normText(q.question) === key; }).map(function (q) { return q.id; });
+    var removed = [];
+    if (keepId === null) {
+      bank.keepDuplicates = (Array.isArray(bank.keepDuplicates) ? bank.keepDuplicates : []).concat([key]);
+    } else {
+      if (group.indexOf(keepId) < 0) return { ok: false, removed: [] };
+      removed = group.filter(function (id) { return id !== keepId; });
+      bank.questions = bank.questions.filter(function (q) { return removed.indexOf(q.id) < 0; });
+      bank.editedAt = new Date().toISOString();
+    }
+    if (!S.saveBank(bank)) return { ok: false, removed: [] };
+    if (removed.length) {
+      var progress = S.getProgress(bankId), changed = false;
+      removed.forEach(function (id) { if (progress[id]) { delete progress[id]; changed = true; } });
+      if (changed) S.saveProgress(bankId, progress, false);
+      S.removeReviews(bankId, removed);
+    }
+    return { ok: true, removed: removed };
   }
 
   // Opens the editor for question qid, or for a new question when qid is null.
@@ -252,9 +304,13 @@
     return out;
   }
 
+  // A safe file name (without extension) from the bank title.
+  function fileName(bank) {
+    return String(bank.title).replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() || 'bank';
+  }
+
   function download(bank) {
-    var name = String(bank.title).replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() || 'bank';
-    SET.ui.downloadJson(name + '.json', toJson(bank));
+    SET.ui.downloadJson(fileName(bank) + '.json', toJson(bank));
   }
 
   SET.editor = {
@@ -264,7 +320,10 @@
     newQuestionId: newQuestionId,
     addQuestion: addQuestion,
     deleteQuestion: deleteQuestion,
+    cleanBank: cleanBank,
+    resolveDuplicates: resolveDuplicates,
     toJson: toJson,
+    fileName: fileName,
     open: open,
     download: download
   };

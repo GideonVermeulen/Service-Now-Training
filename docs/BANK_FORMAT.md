@@ -1,8 +1,8 @@
 # Writing a question bank
 
-A bank is a single `.json` file. Upload it on the app's Library screen. It stays in your browser on your device and is never uploaded anywhere.
+A bank is a single `.json` file, or a `.csv` spreadsheet you can edit in Excel (see [CSV format](#csv-format)). Upload it on the app's Library screen. It stays in your browser on your device and is never uploaded anywhere.
 
-Start from `templates/bank-template.json`.
+Start from `templates/bank-template.json` or `templates/bank-template.csv`.
 
 Use questions you wrote yourself or are licensed to use. Don't upload real exam content (so-called exam dumps): certification agreements, including ServiceNow's, forbid sharing it.
 
@@ -69,6 +69,57 @@ Mock exams draw questions per topic, so each topic gets a fair share of the exam
 - A key that doesn't match any question's topic is a warning, not an error.
 - A bank without `topicWeights` imports normally, with a warning saying what mock exams will do instead (follow the bank's own topic mix, or draw at random if there are no topics).
 
+## CSV format
+
+A CSV bank holds the same information as a JSON bank, one question per row, so you can write and edit it in Excel or any spreadsheet. Start from `templates/bank-template.csv`:
+
+```
+#title,ServiceNow CSA
+#description,Practice bank for the CSA exam
+#questionCount,60
+#timeLimitMinutes,90
+#passMarkPercent,70
+#weight,Platform overview,7
+#weight,Data model,18
+id,question,A,B,C,D,E,answer,explanation,topic,unverified
+q001,Which table stores incidents?,task,incident,sys_user,cmdb_ci,,B,The incident table extends task.,Data model,
+q002,"Which TWO are true, given ""x""?",First,Second,Third,Fourth,Fifth,A;D,,Security,yes
+```
+
+**Settings rows** start with `#`. The first cell is the setting and the next cells hold its value. All of them are optional.
+
+| Row | Value |
+|---|---|
+| `#title` | The bank's name. Without it, the file name is used. |
+| `#description` | Shown on the bank page. |
+| `#questionCount`, `#timeLimitMinutes`, `#passMarkPercent` | Mock exam settings, as in JSON. |
+| `#weight` | A topic and its share of the exam in %, one row per topic (like `exam.topicWeights`). Quote a topic name that contains a comma. |
+
+Settings rows can go anywhere, so sorting the sheet doesn't break them. Unknown settings are ignored with a warning.
+
+**The header row** is the first row that isn't blank and doesn't start with `#`. It names the columns, in any order and any letter case:
+
+| Column | Also accepted | Content |
+|---|---|---|
+| `id` | | Keeps your progress when you edit the sheet. Strongly recommended. |
+| `question` | `question text` | Required. |
+| `A`, `B`, … `J` | `option a` … `option j` | The options, 2 to 10. Fill them from A without gaps, because the answer letters must match the columns. |
+| `answer` | `correct` | Required. Letters only: `B`, or `A;D` (also `A,D` or `A D`) for several. Numbers aren't accepted in CSV. |
+| `explanation` | | Optional. |
+| `topic` | `domain` | Optional. |
+| `unverified` | | `yes`, `true`, `y` or `1` marks the answer unverified. Blank means verified. |
+
+Other columns are ignored with a warning. Error messages name the spreadsheet row, for example "Row 14 (id q013): answer letter E is out of range (4 options)".
+
+**Excel tips**
+
+- Save as **CSV UTF-8 (Comma delimited)**. A file saved as plain "CSV" in the older format still imports, but the app warns you because accented characters may not come through.
+- Keep the `id` column. Without it, ids are made from the question text, so rewording a question loses its progress.
+- Sorting and filtering rows is safe. Semicolon- and tab-separated files (common in Excel outside the UK and US) are detected automatically.
+- When the app exports a bank, a cell that starts with `=`, `+`, `-` or `@` gets a leading `'`, so Excel shows it as text instead of running it as a formula. The `'` is removed again on upload.
+- *Download bank* on a bank page offers **CSV (Excel)** as well as JSON, including any edits you made in the app.
+- Backups stay JSON only.
+
 ## Older format
 
 The app also accepts the earlier format, either a list of questions or an object with `questions`, using short keys:
@@ -88,7 +139,7 @@ You can also add, edit and delete questions in the app (Stats → *+ Add questio
 
 ## If the upload is rejected
 
-The app lists what is wrong and where, for example "Question 14 (id q014): answer index 5 is out of range (4 options)". Fix those lines and upload again. Nothing is imported until the file is valid.
+The app lists what is wrong and where, for example "Question 14 (id q014): answer index 5 is out of range (4 options)", or "Row 14" for a CSV file. Fix those lines and upload again. Nothing is imported until the file is valid.
 
 Smaller problems are warnings: the bank still imports, and the summary lists them. Examples: unknown fields (ignored), duplicate question or option text, topic weights that don't add up to 100, or no topic weights at all.
 

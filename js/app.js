@@ -8,6 +8,8 @@
   var APP_NAME = 'ServiceNow Exam Training';
   var FORMAT_GUIDE = 'docs/BANK_FORMAT.md';
   var TEMPLATE = 'templates/bank-template.json';
+  var TEMPLATE_CSV = 'templates/bank-template.csv';
+  var BANK_ACCEPT = '.json,.csv,application/json,text/csv';
   var SIZES = [10, 25, 50, 'all'];
 
   var leaveFns = [];
@@ -413,8 +415,9 @@
     });
   }
 
-  function pickFile(cb) {
-    var input = el('input', { type: 'file', accept: '.json,application/json', class: 'sr-only', tabindex: '-1' });
+  // accept: file types offered (default: question banks, JSON or CSV).
+  function pickFile(cb, accept) {
+    var input = el('input', { type: 'file', accept: accept || BANK_ACCEPT, class: 'sr-only', tabindex: '-1' });
     input.addEventListener('change', function () {
       var f = input.files && input.files[0];
       if (input.parentNode) input.parentNode.removeChild(input);
@@ -424,8 +427,10 @@
     input.click();
   }
 
-  function downloadJson(name, data) {
-    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  function downloadJson(name, data) { downloadText(name, JSON.stringify(data, null, 2), 'application/json'); }
+
+  function downloadText(name, text, type) {
+    var blob = new Blob([text], { type: type });
     var url = URL.createObjectURL(blob);
     var a = el('a', { href: url, download: name, class: 'sr-only' });
     document.body.appendChild(a);
@@ -437,7 +442,7 @@
     var zone = el('div', { class: 'dropzone' },
       el('div', { class: 'dropzone__icon', 'aria-hidden': 'true' }, uploadIcon()),
       el('p', { class: 'dropzone__title' }, label),
-      el('p', { class: 'muted small' }, 'Drop a .json file here, or'),
+      el('p', { class: 'muted small' }, 'Drop a .json or .csv (Excel) file here, or'),
       el('button', { class: 'btn btn-primary', type: 'button', onclick: function () { pickFile(onFile); } }, 'Choose file…'));
     zone.addEventListener('dragover', function (e) { e.preventDefault(); zone.classList.add('is-over'); });
     zone.addEventListener('dragleave', function (e) { if (!zone.contains(e.relatedTarget)) zone.classList.remove('is-over'); });
@@ -469,11 +474,140 @@
     };
   }
 
+  // Import warnings, grouped by kind, each with what it means and whether to act on it.
+  var WARNING_KINDS = [
+    { test: /same question text as/, title: 'Duplicate questions', note: 'Two questions have the same wording. Both were kept. Use Clean up (exact copies) or Review duplicates (copies that differ) below.' },
+    { test: /have the same text/, title: 'Repeated answer options', note: 'A question lists the same option twice. Clean up below removes the extra copy.' },
+    { test: /older Excel format/, title: 'File encoding', note: 'Accented characters may be wrong. Save as "CSV UTF-8" next time.' },
+    { test: /no "id" column/, title: 'Missing ids', note: 'Progress is tied to ids, so add an id column before you edit the sheet.' },
+    { test: /topicWeights|#weight/, title: 'Topic weights', note: 'About how mock exams share questions across topics. The bank works either way.' },
+    { test: /Unknown|unknown setting|not a known column|is not text|is not valid|is empty or not text/, title: 'Ignored fields', note: 'Information the app doesn’t use was skipped. Harmless.' }
+  ];
+
   function warningList(res) {
     if (!res.warnings.length) return null;
-    return el('details', { class: 'warnings' },
-      el('summary', null, plural(res.warnings.length, 'warning') + ' (import continued)'),
-      el('ul', null, res.warnings.slice(0, 50).map(function (w) { return el('li', null, w); })));
+    var groups = WARNING_KINDS.map(function (k) { return { kind: k, items: [] }; });
+    var other = { kind: { title: 'Other', note: '' }, items: [] };
+    res.warnings.forEach(function (w) {
+      var g = groups.filter(function (x) { return x.kind.test.test(w); })[0] || other;
+      g.items.push(w);
+    });
+    groups = groups.concat([other]).filter(function (g) { return g.items.length; });
+    return el('details', { class: 'warnings', open: true },
+      el('summary', null, plural(res.warnings.length, 'warning') + ' — the bank was imported. These are things to check, not errors:'),
+      el('ul', { class: 'warnings__groups' }, groups.map(function (g) {
+        return el('li', null,
+          el('details', null,
+            el('summary', null, el('strong', null, g.kind.title + ' (' + g.items.length + ')'), g.kind.note ? ' — ' + g.kind.note : ''),
+            el('ul', null, g.items.slice(0, 50).map(function (w) { return el('li', null, w); }),
+              g.items.length > 50 ? el('li', null, '…and ' + (g.items.length - 50) + ' more.') : null)));
+      })));
+  }
+
+  // Offers to fix duplicates: automatically where the app can be sure (Clean up), and with your
+  // choice for same-worded questions that differ (Review duplicates). null when there is nothing.
+  function cleanUpOffer(bankId) {
+    var bank = S.getBank(bankId);
+    if (!bank) return null;
+    var dry = SET.bank.cleanDuplicates(bank, S.getProgress(bankId));
+    var groups = SET.bank.duplicateGroups(bank);
+    var exact = groups.filter(function (g) { return g.exact; });
+    var differ = groups.length - exact.length;
+    var parts = [];
+    if (dry.removedIds.length) {
+      parts.push(plural(dry.removedIds.length, 'identical copy', 'identical copies') + ' (' + dry.removedIds.join(', ') + ')');
+    }
+    if (dry.fixedIds.length) parts.push(plural(dry.fixedIds.length, 'question') + ' with a repeated option (' + dry.fixedIds.join(', ') + ')');
+    if (!parts.length && !groups.length) return null;
+    return el('div', { class: 'cleanup' },
+      el('p', { class: 'small' },
+        parts.length ? 'Clean up removes ' + parts.join(' and ') + ' automatically. ' : '',
+        differ ? plural(differ, 'group has', 'groups have') + ' the same wording but different options or answers. ' : '',
+        groups.length ? 'Review duplicates lets you choose for each group, including keeping all.' : ''),
+      el('div', { class: 'actions actions--tight' },
+        parts.length ? el('button', { class: 'btn btn-primary btn-sm', type: 'button', onclick: function () { runCleanUp(bankId); } }, 'Clean up') : null,
+        groups.length ? el('button', { class: 'btn btn-sm' + (parts.length ? '' : ' btn-primary'), type: 'button', onclick: function () { reviewDuplicates(bankId); } },
+          'Review duplicates (' + groups.length + ')') : null));
+  }
+
+  // One copy in the duplicate review: its options with the right ones ticked, explanation, progress.
+  function duplicateCopy(q, p) {
+    var seen = p && (p.seen || p.reps) || 0;
+    return el('div', { class: 'dup-copy' },
+      el('p', { class: 'dup-copy__head small' }, el('strong', null, q.id),
+        (q.topic ? ' · ' + q.topic : '') + ' · ' + (seen ? 'answered ' + plural(seen, 'time') : 'not studied yet') + (q.unverified ? ' · unverified' : '')),
+      el('ol', { class: 'dup-copy__options' }, q.options.map(function (o, i) {
+        var right = q.answer.indexOf(i) >= 0;
+        return el('li', { class: right ? 'is-correct' : null },
+          el('span', { class: 'dup-copy__letter' }, SET.bank.letter(i)), o, right ? el('span', { class: 'dup-copy__mark' }, ' ✓ correct') : null);
+      })),
+      q.explanation ? el('p', { class: 'small muted' }, q.explanation) : null);
+  }
+
+  // Walks through each group of same-worded questions; for each you keep one, keep all, or skip.
+  function reviewDuplicates(bankId) {
+    var removed = 0, keptAll = 0, decided = 0;
+    var groups = SET.bank.duplicateGroups(S.getBank(bankId) || { questions: [] });
+    var total = groups.length;
+    function finish() {
+      if (decided) {
+        var bits = [];
+        if (removed) bits.push('removed ' + plural(removed, 'question'));
+        if (keptAll) bits.push('kept ' + plural(keptAll, 'group') + ' as different questions');
+        flash = { tone: 'ok', title: 'Duplicates reviewed: ' + bits.join(' and ') + '.', bankId: bankId, cleaned: removed > 0 };
+        if (currentRoute().name !== 'library') go('#/'); else rerender();
+      }
+    }
+    function step(i) {
+      var bank = S.getBank(bankId);
+      if (!bank || i >= groups.length) { finish(); return; }
+      var qmap = SET.bank.byId(bank);
+      var ids = groups[i].ids.filter(function (id) { return qmap[id]; });
+      if (ids.length < 2) { step(i + 1); return; }
+      var progress = S.getProgress(bankId);
+      dialog({
+        title: 'Duplicate ' + (i + 1) + ' of ' + total,
+        wide: true,
+        body: el('div', null,
+          el('p', { class: 'dialog__text' }, '“' + qmap[ids[0]].question + '”'),
+          el('p', { class: 'dialog__text muted small' }, groups[i].exact
+            ? 'These ' + ids.length + ' questions are identical: same wording, options and answer. Keeping one is usually right (the others are deleted, with their progress), or keep all if you want them.'
+            : 'These ' + ids.length + ' questions have the same wording but different options or answers. Keep the right one (the others are deleted, with their progress), or keep all if they are really different questions.'),
+          el('div', { class: 'dup-copies' }, ids.map(function (id) { return duplicateCopy(qmap[id], progress[id]); }))),
+        actions: [{ label: 'Stop', value: null, kind: 'ghost' }, { label: 'Skip', value: 'skip' },
+          { label: 'Keep all — they’re different', value: 'all' }]
+          .concat(ids.map(function (id) { return { label: 'Keep only ' + id, value: 'keep:' + id, kind: 'primary' }; })),
+        focus: 'skip'
+      }).then(function (v) {
+        if (!v) { finish(); return; }
+        if (v === 'all' || v.indexOf('keep:') === 0) {
+          var r = SET.editor.resolveDuplicates(bankId, groups[i].key, v === 'all' ? null : v.slice(5));
+          if (!r.ok) { showFlashNow({ tone: 'error', title: S.QUOTA_MSG }); return; }
+          decided++;
+          removed += r.removed.length;
+          if (v === 'all') keptAll++;
+        }
+        step(i + 1);
+      });
+    }
+    step(0);
+  }
+
+  function runCleanUp(bankId) {
+    var r = SET.editor.cleanBank(bankId);
+    if (!r.ok) { showFlashNow({ tone: 'error', title: S.QUOTA_MSG }); return; }
+    var done = [];
+    if (r.removedIds.length) done.push('removed ' + plural(r.removedIds.length, 'duplicate question'));
+    if (r.fixedIds.length) done.push('fixed ' + plural(r.fixedIds.length, 'repeated option'));
+    flash = {
+      tone: r.manual.length ? 'warn' : 'ok',
+      title: 'Cleaned up: ' + (done.join(' and ') || 'nothing to change') + '.' + (r.manual.length ? ' ' + plural(r.manual.length, 'item needs', 'items need') + ' a manual check:' : ''),
+      list: r.manual.length ? r.manual.slice(0, 20) : null,
+      more: r.manual.length - 20,
+      bankId: bankId,
+      cleaned: true
+    };
+    if (currentRoute().name !== 'library') go('#/'); else rerender();
   }
 
   function addBank(res) {
@@ -491,10 +625,12 @@
     var merged = SET.bank.mergeUpdate(old, res.bank, S.getProgress(bankId));
     var bank = res.bank;
     bank.id = bankId;
+    if (old && Array.isArray(old.keepDuplicates)) bank.keepDuplicates = old.keepDuplicates; // "different questions" choices still apply
     if (!S.saveBank(bank) || !S.saveProgress(bankId, merged.progress, false)) {
       flash = { tone: 'error', title: S.QUOTA_MSG };
       return;
     }
+    S.removeReviews(bankId, merged.dropIds);
     flash = {
       tone: 'ok',
       title: "Updated '" + bank.title + "': +" + merged.added + ' new, ' + merged.removed + ' removed, ' + merged.kept + ' kept' +
@@ -524,8 +660,10 @@
   }
 
   function handleBankFile(file, targetId) {
-    readText(file).then(function (text) {
-      var res = SET.bank.parse(text, file.name);
+    // A spreadsheet saved in an older Excel format isn't UTF-8: read it again as windows-1252.
+    SET.csv.readFile(file, { legacyFallback: !/\.json$/i.test(file.name) }).then(function (read) {
+      var res = SET.bank.parse(read.text, file.name);
+      if (read.warning) res.warnings.unshift(read.warning);
       if (!res.ok) { errorFlash(file.name, res); rerender(); return; }
       if (targetId) {
         confirmOverwrite(targetId).then(function (ok) { if (ok) { updateBank(targetId, res); rerender(); } });
@@ -553,9 +691,29 @@
         addBank(res);
         rerender();
       });
-    }, function () {
-      flash = { tone: 'error', title: "Couldn't read " + file.name + '.' };
+    }, function (e) {
+      flash = { tone: 'error', title: "Couldn't read " + file.name + '.' + (e && e.message === SET.csv.TOO_LARGE ? ' ' + e.message : '') };
       rerender();
+    });
+  }
+
+  // "Download bank": JSON (for this app or an AI) or CSV (to edit in Excel).
+  function downloadBank(bank) {
+    dialog({
+      title: 'Download bank',
+      body: el('p', { class: 'dialog__text' }, 'Includes any edits you made here. Both formats can be uploaded again, and your progress is kept for questions whose id is unchanged.'),
+      actions: [
+        { label: 'Cancel', value: null, kind: 'ghost' },
+        { label: 'CSV (Excel)', value: 'csv' },
+        { label: 'JSON', value: 'json', kind: 'primary' }
+      ],
+      focus: 'json'
+    }).then(function (v) {
+      if (v === 'json') { SET.editor.download(bank); toast('Bank downloaded.'); }
+      if (v === 'csv') {
+        downloadText(SET.editor.fileName(bank) + '.csv', SET.bank.bankToCsv(bank), 'text/csv;charset=utf-8');
+        toast('Bank downloaded as CSV.');
+      }
     });
   }
 
@@ -567,7 +725,7 @@
   }
 
   function importBackup() {
-    pickFile(function (file) {
+    pickFile(function (file) { // backups stay JSON only
       readText(file).then(function (text) {
         var data;
         try { data = JSON.parse(String(text).replace(/^﻿/, '')); }
@@ -598,7 +756,7 @@
             title: 'Backup imported: ' + r.added + ' added, ' + r.updated + ' updated, ' + r.skipped + ' unchanged.' + skippedNote });
         });
       });
-    });
+    }, '.json,application/json');
   }
 
   function showFlashNow(f) {
@@ -617,6 +775,11 @@
       if (f.more > 0) extra.push(el('p', { class: 'small' }, '…and ' + f.more + ' more.'));
     }
     if (f.res) extra.push(warningList(f.res));
+    if (f.res && f.bankId) extra.push(cleanUpOffer(f.bankId));
+    if (f.cleaned && S.getBank(f.bankId)) {
+      extra.push(el('p', { class: 'small' }, 'This changed the bank in this browser only. Download the cleaned bank to update your own file, so the duplicates don’t come back next time you upload it. ',
+        el('button', { class: 'link', type: 'button', onclick: function () { downloadBank(S.getBank(f.bankId)); } }, 'Download cleaned bank')));
+    }
     if (f.bankId) extra.push(el('p', null, el('a', { class: 'link', href: '#/bank/' + encodeURIComponent(f.bankId) }, 'Open bank →')));
     return el('div', { class: 'flash', 'aria-live': 'polite' }, callout(el('p', { class: 'callout__title' }, f.title), f.tone, extra));
   }
@@ -681,7 +844,9 @@
         el('div', { class: 'help-links' },
           el('a', { class: 'link', href: FORMAT_GUIDE, target: '_blank', rel: 'noopener' }, 'Bank format guide'),
           el('span', { 'aria-hidden': 'true' }, '·'),
-          el('a', { class: 'link', href: TEMPLATE, download: 'bank-template.json' }, 'Download template'),
+          el('a', { class: 'link', href: TEMPLATE, download: 'bank-template.json' }, 'Template (JSON)'),
+          el('span', { 'aria-hidden': 'true' }, '·'),
+          el('a', { class: 'link', href: TEMPLATE_CSV, download: 'bank-template.csv' }, 'Template (CSV for Excel)'),
           el('span', { 'aria-hidden': 'true' }, '·'),
           el('button', { class: 'link', type: 'button', onclick: importBackup }, 'Import a backup'))));
       return;
@@ -698,7 +863,9 @@
       el('p', { class: 'help-links' },
         el('a', { class: 'link', href: FORMAT_GUIDE, target: '_blank', rel: 'noopener' }, 'Bank format guide'),
         el('span', { 'aria-hidden': 'true' }, '·'),
-        el('a', { class: 'link', href: TEMPLATE, download: 'bank-template.json' }, 'Download template')),
+        el('a', { class: 'link', href: TEMPLATE, download: 'bank-template.json' }, 'Template (JSON)'),
+          el('span', { 'aria-hidden': 'true' }, '·'),
+          el('a', { class: 'link', href: TEMPLATE_CSV, download: 'bank-template.csv' }, 'Template (CSV for Excel)')),
       backupCard()));
   }
 
@@ -722,15 +889,18 @@
 
   function bankCardInner(entry) {
     var bank = S.getBank(entry.id);
+    if (bank) { releasePastExamCap(entry.id); entry = S.getEntry(entry.id) || entry; }
     var count = bank ? bank.questions.length : entry.questionCount;
-    var c = bank ? W.counts(bank.questions, S.getProgress(entry.id)) : { mastered: 0, total: count };
+    var progress = bank ? S.getProgress(entry.id) : {};
+    var c = bank ? W.counts(bank.questions, progress) : { mastered: 0, total: count };
+    var plan = bank ? W.dailyPlan(bank.questions, progress, entry, S.getSettings()) : null;
     var mastery = W.pct(c.mastered, c.total);
     var hash = '#/bank/' + encodeURIComponent(entry.id);
     return el('li', { class: 'card bank-card' },
       el('div', { class: 'bank-card__main' },
         el('h2', { class: 'bank-card__title' }, el('a', { href: hash }, entry.title)),
         el('p', { class: 'muted small' }, plural(count, 'question') +
-          (bank ? ' · ' + W.dueCount(bank.questions, S.getProgress(entry.id)).due + ' to review today' : '') +
+          (plan ? ' · ' + plan.reviewsDue + ' to review · ' + plan.newLeftToday + ' new today' : '') +
           ' · Last studied ' + (entry.lastStudied ? date(entry.lastStudied) : 'never')),
         el('div', { class: 'mastery' },
           progressBar(c.mastered, c.total || 1, 'Mastery'),
@@ -758,6 +928,7 @@
   function renderBankHome(main, bankId) {
     var bank = S.getBank(bankId);
     if (!bank) { flash = { tone: 'error', title: 'That bank no longer exists.' }; go('#/', true); return; }
+    releasePastExamCap(bankId);
     var progress = S.getProgress(bankId);
     var counts = W.counts(bank.questions, progress);
     var n = bank.questions.length;
@@ -807,11 +978,13 @@
           el('h1', { tabindex: '-1' }, bank.title),
           el('p', { class: 'muted' }, plural(n, 'question') + (counts.total ? ' · ' + W.pct(counts.mastered, n) + '% mastered' : ''))),
         el('div', { class: 'actions' },
-          el('button', { class: 'btn', type: 'button', title: 'Download this bank as JSON, including any edits you made here',
-            onclick: function () { SET.editor.download(bank); toast('Bank downloaded.'); } }, 'Download bank'),
+          el('button', { class: 'btn', type: 'button', title: 'Download this bank as JSON or CSV, including any edits you made here',
+            onclick: function () { downloadBank(bank); } }, 'Download bank'),
           el('a', { class: 'btn', href: hash + '/stats' }, statsIcon(), 'Stats'))),
       bank.description ? el('p', { class: 'lead' }, bank.description) : null,
       active && active.bankId === bankId ? resumeCallout(active) : null,
+      personalisePrompt(),
+      (function () { var offer = cleanUpOffer(bankId); return offer ? callout(el('p', { class: 'callout__title' }, 'Duplicates found in this bank'), 'warn', offer) : null; })(),
       el('section', { class: 'card' },
         el('h2', { class: 'sr-only' }, 'Status'),
         statusBar(counts)),
@@ -839,12 +1012,102 @@
             } }, 'Start exam'))))));
   }
 
-  function examDateHint(examDate) {
+  function shortDay(ms) { return new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }); }
+
+  // plan: W.dailyPlan for this bank (optional), for the new-a-day pace.
+  function examDateHint(examDate, plan) {
     var days = W.daysUntil(examDate);
-    if (days === null) return 'Optional. Set it so everything you study comes back for review before the exam.';
+    if (days === null) return 'Optional. Set it so everything you study comes back for review before the exam, and new questions are spread over the days left.';
     if (days === 0) return 'Your exam is today. Good luck!';
-    if (days < 0) return 'This date has passed. Change it if you’ve rebooked.';
+    if (days < 0) return 'This date has passed. Set your next exam date, or clear it.';
+    if (days === 1) return 'Your exam is tomorrow. Today is for review.';
+    if (plan && plan.source === 'exam') {
+      if (plan.inBuffer) return plural(days, 'day') + ' to go · review only from now on.';
+      return plural(days, 'day') + ' to go · ' + plan.newTarget + ' new a day until ' +
+        shortDay(W.dayStart(W.parseDay(plan.reviewFrom), -1)) + ', then review only.';
+    }
     return plural(days, 'day') + ' to go. Anything you study now comes back for review before your exam.';
+  }
+
+  // Applies a new exam date (null = cleared): stores it with its review-only start, and moves every
+  // studied question's due date so it comes back before the exam (or back to its normal interval).
+  function setExamDate(bankId, examDate) {
+    var now = Date.now();
+    S.touch(bankId, { examDate: examDate, examDatePrompted: true, reviewFrom: W.reviewFrom(examDate, now), examCapClearedFor: null });
+    var r = W.reschedule(S.getProgress(bankId), examDate, now);
+    if (!r.moved) return;
+    S.saveProgress(bankId, r.progress, false);
+    toast(W.latestDue(examDate, now) !== null
+      ? 'Rescheduled ' + plural(r.moved, 'question') + ' so they come back before your exam.'
+      : 'Rescheduled ' + plural(r.moved, 'question') + ' back to their normal intervals.');
+  }
+
+  // The first time a bank is shown after its exam date has passed, questions held back for that exam
+  // go back to their normal intervals. Runs once per exam date.
+  function releasePastExamCap(bankId) {
+    var entry = S.getEntry(bankId);
+    if (!entry || !entry.examDate || entry.examCapClearedFor === entry.examDate) return;
+    var days = W.daysUntil(entry.examDate);
+    if (days === null || days >= 0) return;
+    var r = W.reschedule(S.getProgress(bankId), null);
+    if (r.moved) S.saveProgress(bankId, r.progress, false);
+    S.touch(bankId, { examCapClearedFor: entry.examDate });
+  }
+
+  // Reviews due over the next 7 days as a bar strip, so a heavy day shows before it comes.
+  function forecastStrip(days) {
+    var max = Math.max.apply(null, days.map(function (d) { return d.count; }).concat([1]));
+    var label = days.map(function (d, i) { return (i ? shortDay(d.day) : 'Today') + ' ' + d.count; }).join(', ');
+    return el('div', { class: 'forecast' },
+      el('p', { class: 'forecast__title small muted' }, 'Reviews due over the next 7 days'),
+      el('ol', { class: 'forecast__bars', 'aria-label': 'Reviews due: ' + label }, days.map(function (d, i) {
+        var name = i ? new Date(d.day).toLocaleDateString(undefined, { weekday: 'short' }) : 'Today';
+        return el('li', { class: 'forecast__day', title: (i ? shortDay(d.day) : 'Today') + ': ' + plural(d.count, 'review') },
+          el('span', { class: 'forecast__count num' }, String(d.count)),
+          el('span', { class: 'forecast__bar', style: 'height:' + Math.round(4 + 56 * d.count / max) + 'px', 'aria-hidden': 'true' }),
+          el('span', { class: 'forecast__name' }, name));
+      })));
+  }
+
+  // Today: reviews due + new questions, today's session button, and pace advice.
+  function todayTile(bankId, plan, n) {
+    var done = plan.reviewsDue === 0 && plan.newLeftToday === 0;
+    var settings = S.getSettings();
+    var sub = done
+      ? (plan.missedToday ? 'Done for today ✓ — the ' + plural(plan.missedToday, 'question') + ' you missed ' + (plan.missedToday === 1 ? 'comes' : 'come') + ' back tomorrow, when recalling ' + (plan.missedToday === 1 ? 'it' : 'them') + ' does the most good. Extra practice is optional.'
+        : plan.newRemaining ? 'Done for today ✓ — extra practice is optional' : 'Everything learned and nothing due ✓ — extra practice is optional')
+      : plan.source === 'manual'
+        ? settings.newPerDay + ' new a day (Settings) · no exam date'
+        : plan.inBuffer ? 'Review-only days before your exam' : plan.newTarget + ' new a day until your exam';
+    var newPart = plan.inBuffer && !plan.behind ? 'review only' : plan.newTarget + ' new';
+    return el('div', { class: 'tile tile--today' },
+      el('p', { class: 'tile__label' }, 'Today'),
+      el('p', { class: 'tile__value tile__value--sm num' }, plural(plan.reviewsDue, 'review') + ' · ' + newPart),
+      plan.newTarget ? el('div', { class: 'tile__bar' },
+        progressBar(Math.min(plan.newDoneToday, plan.newTarget), plan.newTarget, 'New questions done today'),
+        el('span', { class: 'small muted num' }, Math.min(plan.newDoneToday, plan.newTarget) + ' / ' + plan.newTarget + ' new done')) : null,
+      el('p', { class: 'tile__sub' }, sub),
+      el('div', { class: 'tile__action' }, done
+        ? el('button', { class: 'btn btn-sm', type: 'button', onclick: function () {
+          SET.practice.start(bankId, { size: Math.min(practiceSize === 'all' ? n : practiceSize, n), focus: settings.focus });
+        } }, 'Extra practice')
+        : el('button', { class: 'btn btn-primary btn-sm', type: 'button', onclick: function () {
+          SET.practice.start(bankId, { plan: { due: true, newCount: plan.newLeftToday } });
+        } }, 'Start today’s session')));
+  }
+
+  function paceAdvice(plan) {
+    if (plan.behind) {
+      return callout(el('p', null, 'You’re in the review-only days before your exam, but ' + plural(plan.newRemaining, 'question is', 'questions are') +
+        ' still new. They’re all in today’s plan. Consider moving your exam date if that’s too many.'), 'warn');
+    }
+    if (plan.pace === 'impossible') {
+      return callout(el('p', null, plan.newTarget + ' new questions a day is more than anyone can learn well. Consider moving your exam date or studying weekends.'), 'warn');
+    }
+    if (plan.pace === 'heavy') {
+      return callout(el('p', null, 'Today is a heavy day (' + (plan.newTarget + plan.reviewsDue) + ' questions). Consider moving your exam date or studying weekends.'), 'info');
+    }
+    return null;
   }
 
   // Readiness per topic (exam domain), weakest first, so weak areas show before the exam.
@@ -883,7 +1146,7 @@
     var bankId = bank.id;
     var entry = S.getEntry(bankId) || {};
     var examDate = entry.examDate || null;
-    var due = W.dueCount(bank.questions, progress);
+    var plan = W.dailyPlan(bank.questions, progress, entry, S.getSettings());
     var weights = bank.exam && bank.exam.topicWeights;
     var now = W.readiness(bank.questions, progress, weights);
     var pass = bank.exam.passMarkPercent;
@@ -906,8 +1169,7 @@
     var chanceBand = chance ? { likely: 'Likely', borderline: 'Borderline', unlikely: 'Unlikely' }[chance.band] : '';
 
     var tiles = el('div', { class: 'tiles' },
-      tile('To review today', String(due.due), due.due ? 'Due for review, or answered wrong last time'
-        : due['new'] ? 'Nothing due. ' + plural(due['new'], 'new question') + ' to learn.' : 'Nothing due. Anything more is extra practice.'),
+      todayTile(bankId, plan, bank.questions.length),
       tile('Readiness', now.seen ? adjust(now.percent) + '%' : '—', now.seen
         ? 'Expected mock exam score today · assumed pass mark ' + pass + '% · ' + calNote +
           (now.coverage < 50 ? ' · rough: only ' + now.coverage + '% of questions seen' : '')
@@ -920,7 +1182,7 @@
     // While a date is typed, the browser reports partial years (0002, 0020, 0202...). Only plausible
     // dates are saved, and the card refreshes once the field loses focus, so typing isn't interrupted.
     var dateId = nextId('exam-date');
-    var dateHint = el('p', { class: 'hint' }, examDateHint(examDate));
+    var dateHint = el('p', { class: 'hint' }, examDateHint(examDate, plan));
     var changed = false;
     var refresh = function () {
       if (!changed || !card.parentNode) return;
@@ -934,8 +1196,8 @@
         var ok = /^(\d{4})-\d{2}-\d{2}$/.exec(raw);
         if (raw && !(ok && Number(ok[1]) >= 2000 && Number(ok[1]) <= 2099)) return; // still typing
         var v = raw || null;
-        S.touch(bankId, { examDate: v, examDatePrompted: true });
-        dateHint.textContent = examDateHint(v);
+        setExamDate(bankId, v);
+        dateHint.textContent = examDateHint(v, W.dailyPlan(bank.questions, S.getProgress(bankId), S.getEntry(bankId), S.getSettings()));
         changed = true;
         if (document.activeElement !== dateInput) refresh(); // picked from the calendar
       },
@@ -959,6 +1221,8 @@
     var card = el('section', { class: 'card plan' },
       el('h2', null, 'Study plan'),
       tiles,
+      paceAdvice(plan),
+      forecastStrip(W.forecast(bank.questions, progress, 7)),
       now.seen ? el('p', { class: 'plan__disclaimer small' }, el('strong', null, 'For this question set only. '),
         'Readiness and chance of passing describe a mock exam drawn from the questions you uploaded. They are not a guarantee of your result on the real exam, which uses different questions. The ' + pass +
         '% pass mark is this bank’s setting; the real exam’s cut score may differ and isn’t always published.') : null,
@@ -990,8 +1254,132 @@
       svg('path', { d: 'M4 20V10M10 20V4M16 20v-7M22 20H2' }));
   }
 
+  // Recomputes every bank's due dates (after the target retention changes). Returns questions moved.
+  function rescheduleAll() {
+    var moved = 0;
+    S.getIndex().banks.forEach(function (entry) {
+      var r = W.reschedule(S.getProgress(entry.id), entry.examDate);
+      if (r.moved) { S.saveProgress(entry.id, r.progress, false); moved += r.moved; }
+    });
+    return moved;
+  }
+
+  function optimiserStatus() { var O = SET.optimizer; return O.status(O.buildData(O.storedBanks())); }
+
+  // Shown on a bank page once there is enough history to personalise, then every 30 days or 1,000 reviews.
+  function personalisePrompt() {
+    var st = optimiserStatus();
+    if (!SET.optimizer.shouldPrompt(st, S.getSettings())) return null;
+    var mark = function () { S.saveSettings({ fsrsPrompt: { at: new Date().toISOString(), reviews: st.reviews } }); };
+    var node = callout(el('p', null, el('strong', null, 'Personalise your review schedule. '),
+      'You have ' + plural(st.reviews, 'review') + ' of history, enough to fit the scheduler to how you remember.'), 'info',
+      el('div', { class: 'actions actions--tight' },
+        el('a', { class: 'btn btn-primary btn-sm', href: '#/settings', onclick: mark }, 'Open settings'),
+        el('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: function () {
+          mark();
+          if (node.parentNode) node.parentNode.removeChild(node);
+        } }, 'Not now')));
+    return node;
+  }
+
+  // Settings → Personalise scheduling: status, Optimise now (with progress and Cancel), results, reset.
+  function personaliseSection() {
+    var O = SET.optimizer;
+    var body = el('div', { class: 'personalise' });
+    var job = null;
+    onLeave(function () { if (job) job.cancel(); });
+
+    function draw(message) {
+      clear(body);
+      var s = S.getSettings();
+      var st = optimiserStatus();
+      body.appendChild(el('p', { class: 'muted small' }, s.fsrs
+        ? 'Using weights fitted to your history on ' + date(s.fsrs.fittedAt) + ' (' + plural(s.fsrs.reviews, 'review') + ').'
+        : 'Using the standard FSRS weights.'));
+      if (!st.ready) {
+        body.appendChild(el('ul', { class: 'personalise__needs small' },
+          el('li', { class: 'num' }, Math.min(st.reviews, O.MIN_REVIEWS) + ' / ' + O.MIN_REVIEWS + ' reviews on a later day than the first'),
+          el('li', { class: 'num' }, Math.min(st.questions, O.MIN_QUESTIONS) + ' / ' + O.MIN_QUESTIONS + ' questions answered'),
+          el('li', { class: 'num' }, Math.min(st.days, O.MIN_DAYS) + ' / ' + O.MIN_DAYS + ' days of history')));
+        body.appendChild(el('p', { class: 'hint' }, 'Keep studying — this unlocks once all three are reached. Every answer from now on counts.'));
+      }
+      if (message) body.appendChild(message);
+      body.appendChild(el('div', { class: 'actions actions--wrap' },
+        el('button', { class: 'btn btn-primary', type: 'button', disabled: !st.ready, onclick: run }, 'Optimise now'),
+        s.fsrs ? el('button', { class: 'btn btn-ghost', type: 'button', onclick: reset }, 'Reset to default weights') : null));
+    }
+
+    function run() {
+      var data = O.buildData(O.storedBanks());
+      clear(body);
+      var bar = progressBar(0, 100, 'Optimising');
+      body.appendChild(el('p', { class: 'small', 'aria-live': 'polite' }, 'Fitting the scheduler to ' + plural(O.status(data).reviews, 'review') + '…'));
+      body.appendChild(bar);
+      body.appendChild(el('div', { class: 'actions' }, el('button', { class: 'btn btn-ghost', type: 'button', onclick: function () { if (job) job.cancel(); } }, 'Cancel')));
+      job = O.start(data, {}, function (p) {
+        var v = Math.round(p * 100);
+        bar.setAttribute('aria-valuenow', v);
+        bar.firstChild.style.width = v + '%';
+      });
+      job.promise.then(function (res) {
+        job = null;
+        if (!body.isConnected) return;
+        if (res.cancelled) { draw(callout('Cancelled. Nothing changed.', 'info')); return; }
+        S.saveSettings({ fsrsPrompt: { at: new Date().toISOString(), reviews: res.reviews } });
+        if (!res.accepted) {
+          draw(callout('Your history fits the standard weights well, so nothing changed. (Prediction error on your newest reviews: ' +
+            res.logLossBefore.toFixed(3) + ' standard vs ' + res.logLossAfter.toFixed(3) + ' fitted.)', 'info'));
+          return;
+        }
+        var rebuilt = O.apply(res);
+        draw(callout('Predictions are ' + Math.round(res.improvement * 100) + '% more accurate for you (log-loss ' + res.logLossBefore.toFixed(3) + ' → ' +
+          res.logLossAfter.toFixed(3) + ', RMSE ' + res.rmseBefore.toFixed(3) + ' → ' + res.rmseAfter.toFixed(3) + ', on your newest ' + plural(res.heldOut, 'review') +
+          '). ' + plural(rebuilt, 'question') + ' rescheduled with the new weights.', 'ok'));
+      }, function (e) {
+        job = null;
+        draw(callout('Optimising failed, so nothing changed. Details: ' + (e && e.message ? e.message : String(e)), 'error'));
+      });
+    }
+
+    function reset() {
+      confirm('Reset to default weights?', 'Your questions are rescheduled with the standard FSRS weights. You can optimise again any time.', 'Reset').then(function (ok) {
+        if (!ok) return;
+        var rebuilt = O.apply(null);
+        draw(callout('Back to the standard weights. ' + plural(rebuilt, 'question') + ' rescheduled.', 'ok'));
+      });
+    }
+
+    draw();
+    return el('div', { class: 'setting setting--stack' },
+      el('div', null, el('h2', null, 'Personalise scheduling'),
+        el('p', { class: 'muted small' }, 'Fits the review scheduler (FSRS) to your own answer history across all banks, so questions come back when you are about to forget them. Runs in this browser; nothing is sent anywhere. New weights are kept only if they predict your recent answers better.')),
+      body);
+  }
+
   function renderSettings(main) {
     var s = S.getSettings();
+    var perDayId = nextId('set-new');
+    var perDayError = el('p', { class: 'field-error', role: 'alert' });
+    var perDay = el('input', { id: perDayId, class: 'input input--narrow num', type: 'number', inputmode: 'numeric', min: 1, max: S.NEW_PER_DAY_MAX, step: 1,
+      value: String(s.newPerDay), onchange: function () {
+        var v = Number(perDay.value);
+        if (perDay.value === '' || Math.floor(v) !== v || v < 1 || v > S.NEW_PER_DAY_MAX) {
+          perDay.setAttribute('aria-invalid', 'true');
+          perDayError.textContent = 'Enter a whole number from 1 to ' + S.NEW_PER_DAY_MAX + '.';
+          return;
+        }
+        perDay.removeAttribute('aria-invalid');
+        perDayError.textContent = '';
+        S.saveSettings({ newPerDay: v });
+        toast('Saved.');
+      } });
+    var retentionCtl = segmented('Target retention', [0.8, 0.85, 0.9, 0.95].map(function (r) {
+      return { value: r, label: Math.round(r * 100) + '%' };
+    }), s.targetRetention, function (v) {
+      S.saveSettings({ targetRetention: Number(v) });
+      var moved = rescheduleAll();
+      toast('Saved.' + (moved ? ' Rescheduled ' + plural(moved, 'question') + '.' : ''));
+    });
     var shuffle = el('input', { type: 'checkbox', id: 'set-shuffle', class: 'switch__input', role: 'switch', checked: s.shuffleOptions,
       onchange: function () { S.saveSettings({ shuffleOptions: shuffle.checked }); toast('Saved.'); } });
     main.appendChild(el('section', { class: 'screen' },
@@ -1009,6 +1397,16 @@
           el('div', null, el('h2', null, el('label', { for: 'set-shuffle' }, 'Shuffle answer options')),
             el('p', { class: 'muted small' }, 'Mixes the option order every time, so you learn the answer rather than its letter.')),
           el('span', { class: 'switch' }, shuffle, el('span', { class: 'switch__track', 'aria-hidden': 'true' })))),
+      el('section', { class: 'card settings-group' },
+        el('div', { class: 'setting' },
+          el('div', null, el('h2', null, el('label', { for: perDayId }, 'New questions per day')),
+            el('p', { class: 'muted small' }, 'Used when a bank has no exam date. With a date, new questions are spread over the days left.'), perDayError),
+          perDay),
+        el('div', { class: 'setting setting--stack' },
+          el('div', null, el('h2', null, 'Target retention'),
+            el('p', { class: 'muted small' }, 'How likely you should still remember a question when it comes back. Higher means more reviews; 90% is the usual balance.')),
+          retentionCtl),
+        personaliseSection()),
       backupCard(),
       el('section', { class: 'card card--danger' },
         el('h2', null, 'Delete all data'),
@@ -1186,7 +1584,7 @@
     focusControl: focusControl, optionList: optionList, explanation: explanation, unverifiedNote: unverifiedNote,
     reviewItem: reviewItem, scoreRing: scoreRing, fact: fact, tile: tile, setTimer: setTimer,
     ensureNoActive: ensureNoActive, go: go, rerender: rerender, onLeave: onLeave, focusHeading: focusHeading,
-    downloadJson: downloadJson, plural: plural, nextId: nextId
+    downloadJson: downloadJson, downloadText: downloadText, plural: plural, nextId: nextId
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

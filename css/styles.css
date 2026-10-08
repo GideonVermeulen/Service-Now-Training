@@ -381,6 +381,10 @@ svg { flex-shrink: 0; }
 .error-list { padding-left: 20px; font-size: 0.9rem; display: grid; gap: 4px; }
 .warnings summary { cursor: pointer; font-size: 0.9rem; color: var(--text-muted); min-height: 32px; display: flex; align-items: center; }
 .warnings ul { padding-left: 20px; font-size: 0.875rem; color: var(--text-muted); display: grid; gap: 2px; }
+.warnings .warnings__groups { list-style: none; padding-left: 0; gap: 6px; }
+.warnings__groups summary { display: list-item; min-height: 0; padding: 4px 0; color: var(--text-muted); }
+.warnings__groups strong { color: var(--text); }
+.warnings__groups ul { margin: 4px 0 6px; }
 
 .toast {
   position: fixed; left: 50%; bottom: 24px; z-index: 60; transform: translate(-50%, 12px);
@@ -707,6 +711,7 @@ th[aria-sort="ascending"] .th-sort__arrow, th[aria-sort="descending"] .th-sort__
 .setting > div:first-child { flex: 1 1 240px; min-width: 0; }
 .setting h2 { font-size: 1rem; margin-bottom: 2px; }
 .setting--stack { flex-direction: column; align-items: stretch; }
+.setting--stack > div:first-child { flex: 0 0 auto; } /* the 240px basis above is a width, not a height */
 .about p + p { margin-top: 8px; }
 
 /* ---------- dialog ---------- */
@@ -791,3 +796,33 @@ th[aria-sort="ascending"] .th-sort__arrow, th[aria-sort="descending"] .th-sort__
   .option.is-selected, .option.is-correct, .option.is-wrong { border-width: 3px; }
   .bar__fill, .stack__seg { forced-color-adjust: none; }
 }
+
+/* ---------- daily plan ---------- */
+
+.tile--today { display: flex; flex-direction: column; gap: 6px; }
+.tile__value--sm { font-size: 1.25rem; line-height: 1.25; }
+.tile__bar { display: flex; flex-direction: column; gap: 4px; }
+.tile__action { margin-top: auto; padding-top: 4px; }
+.forecast__title { margin: 0 0 6px; }
+.forecast__bars { list-style: none; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; align-items: end; padding: 0; margin: 0; }
+.forecast__day { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.forecast__bar { display: block; width: 100%; max-width: 40px; border-radius: 6px 6px 2px 2px; background: var(--accent); opacity: 0.85; }
+.forecast__day:first-child .forecast__bar { background: var(--warn); }
+.forecast__count { font-size: 0.8rem; font-weight: 700; color: var(--text-muted); }
+.forecast__name { font-size: 0.72rem; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+/* ---------- settings: plan + scheduling ---------- */
+
+.input--narrow { width: 7rem; }
+.personalise { display: flex; flex-direction: column; gap: 10px; }
+.personalise__needs { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; color: var(--text-muted); }
+.cleanup { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 8px; }
+.cleanup p { flex: 1 1 260px; margin: 0; }
+.dup-copies { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 10px; max-height: 50vh; overflow-y: auto; }
+.dup-copy { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--surface-2); }
+.dup-copy__head { margin: 0 0 6px; color: var(--text-muted); }
+.dup-copy__options { list-style: none; padding: 0; margin: 0 0 6px; display: grid; gap: 4px; font-size: 0.9rem; }
+.dup-copy__options li { padding: 3px 6px; border-radius: 6px; overflow-wrap: anywhere; }
+.dup-copy__options li.is-correct { background: var(--ok-soft); }
+.dup-copy__letter { font-weight: 750; color: var(--text-muted); margin-right: 6px; }
+.dup-copy__mark { color: var(--ok); font-weight: 700; font-size: 0.8rem; }

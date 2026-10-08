@@ -1,7 +1,12 @@
 {
   "title": "My exam bank",
-  "description": "What this bank covers.",
-  "exam": { "questionCount": 60, "timeLimitMinutes": 90, "passMarkPercent": 70 },
+  "description": "What this bank covers. Shown on the bank page.",
+  "exam": {
+    "questionCount": 60,
+    "timeLimitMinutes": 90,
+    "passMarkPercent": 70,
+    "topicWeights": { "Topic one": 60, "Topic two": 40 }
+  },
   "questions": [
     {
       "id": "q001",
@@ -9,13 +14,23 @@
       "options": ["First option", "Second option", "Third option", "Fourth option"],
       "answer": "B",
       "explanation": "Optional. Shown after you answer.",
-      "topic": "Optional topic name"
+      "topic": "Topic one"
     },
     {
       "id": "q002",
       "question": "Multi-answer example: which TWO options are correct?",
       "options": ["First option", "Second option", "Third option", "Fourth option", "Fifth option"],
-      "answer": ["A", "D"]
+      "answer": ["A", "D"],
+      "explanation": "You only get it right if you pick exactly the correct set.",
+      "topic": "Topic one"
+    },
+    {
+      "id": "q003",
+      "question": "Unverified example: an answer you haven't confirmed yet.",
+      "options": ["First option", "Second option", "Third option"],
+      "answer": "C",
+      "topic": "Topic two",
+      "unverified": true
     }
   ]
 }

@@ -4,9 +4,10 @@
   var SET = window.SET = window.SET || {};
 
   var prefix = 'set:v1:';
-  var SCHEMA_VERSION = 2; // 2: FSRS progress records (older records are converted when read)
+  var SCHEMA_VERSION = 3; // 2: FSRS progress records (older records are converted when read). 3: review log
   var SESSION_CAP = 200;
   var REVIEW_CAP = 30; // exam sessions that keep their full answer review
+  var REVIEW_LOG_CAP = 20000; // answers kept per bank in the review log (oldest dropped)
   var QUOTA_MSG = 'Storage full — export a backup and delete unused banks.';
   var UNAVAILABLE_MSG = 'Browser storage is unavailable, so nothing will be saved. Allow site data for this page, or use a normal (not private) window.';
   var BACKUP_FORMAT = 'set-backup';
@@ -73,6 +74,7 @@
 
   // Upgrades an index (and the data it points to) from older schema versions.
   // Version 1 → 2 needs no rewrite here: old progress records are converted when read (weighting.js).
+  // Version 2 → 3 adds the review log, which simply starts empty.
   // The bump makes older copies of the app refuse newer backups instead of misreading them.
   function migrate(index) {
     if (!index || typeof index !== 'object') index = { version: SCHEMA_VERSION, banks: [] };
@@ -132,6 +134,7 @@
     remove('bank:' + bankId);
     remove('progress:' + bankId);
     remove('sessions:' + bankId);
+    remove('reviews:' + bankId);
     var active = getActive();
     if (active && active.bankId === bankId) clearActive();
     var index = getIndex();
@@ -173,9 +176,61 @@
   function clearStudy(bankId) {
     remove('progress:' + bankId);
     remove('sessions:' + bankId);
+    remove('reviews:' + bankId);
     var active = getActive();
     if (active && active.bankId === bankId) clearActive();
     return touch(bankId, { updatedAt: nowIso(), lastStudied: null });
+  }
+
+  /* ---------- review log ---------- */
+
+  // Every counted answer, oldest first, as [questionId, timestampMs, grade 1–4, mode 'p' | 'e'].
+  // The progress record only holds a question's current state; this history is what the
+  // scheduling optimiser learns from.
+  var LOG_MODES = ['p', 'e'];
+
+  function validReview(r, known) {
+    return Array.isArray(r) && r.length === 4 && typeof r[0] === 'string' && (!known || known[r[0]]) &&
+      isNum(r[1]) && r[1] > 0 && [1, 2, 3, 4].indexOf(r[2]) >= 0 && LOG_MODES.indexOf(r[3]) >= 0;
+  }
+
+  function getReviews(bankId) {
+    var list = get('reviews:' + bankId, []);
+    return Array.isArray(list) ? list.filter(function (r) { return validReview(r); }) : [];
+  }
+
+  // Appends answers: [{ id, when (ms or ISO), grade, mode: 'p' | 'e' }]. Keeps the newest REVIEW_LOG_CAP.
+  function logReviews(bankId, items) {
+    if (!items || !items.length) return true;
+    var list = getReviews(bankId);
+    items.forEach(function (i) {
+      var t = typeof i.when === 'number' ? i.when : Date.parse(i.when);
+      var r = [String(i.id), t, i.grade, i.mode];
+      if (validReview(r)) list.push(r);
+    });
+    if (list.length > REVIEW_LOG_CAP) list = list.slice(-REVIEW_LOG_CAP);
+    return set('reviews:' + bankId, list);
+  }
+
+  function logReview(bankId, id, when, grade, mode) {
+    return logReviews(bankId, [{ id: id, when: when, grade: grade, mode: mode }]);
+  }
+
+  // Drops the log entries of these question ids (deleted, or their answer changed).
+  function removeReviews(bankId, ids) {
+    if (!ids || !ids.length) return true;
+    var drop = Object.create(null);
+    ids.forEach(function (id) { drop[id] = true; });
+    var list = getReviews(bankId);
+    var kept = list.filter(function (r) { return !drop[r[0]]; });
+    return kept.length === list.length ? true : set('reviews:' + bankId, kept);
+  }
+
+  // A backup's review log with every entry checked; only questions that exist in the bank.
+  function cleanReviews(raw, known) {
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(function (r) { return validReview(r, known); }).map(function (r) { return r.slice(); })
+      .sort(function (a, b) { return a[1] - b[1]; }).slice(-REVIEW_LOG_CAP);
   }
 
   /* ---------- active session ---------- */
@@ -189,22 +244,53 @@
 
   /* ---------- settings ---------- */
 
-  var DEFAULT_SETTINGS = { theme: 'system', focus: 2, shuffleOptions: true };
+  var DEFAULT_SETTINGS = { theme: 'system', focus: 2, shuffleOptions: true, newPerDay: 20, targetRetention: 0.9 };
+  var NEW_PER_DAY_MAX = 200;
+
+  // Personalised scheduler weights: { weights (19 numbers), fittedAt, reviews, logLossBefore, logLossAfter }.
+  // null when missing or unusable, so the published defaults apply.
+  function cleanFsrs(f) {
+    if (!f || typeof f !== 'object' || Array.isArray(f) || !SET.fsrs || !SET.fsrs.validWeights(f.weights)) return null;
+    return {
+      weights: f.weights.slice(),
+      fittedAt: dateOrNull(f.fittedAt),
+      reviews: count(f.reviews),
+      logLossBefore: isNum(f.logLossBefore) ? f.logLossBefore : null,
+      logLossAfter: isNum(f.logLossAfter) ? f.logLossAfter : null
+    };
+  }
 
   function getSettings() {
     var s = get('settings', {}) || {};
     var out = {
       theme: ['system', 'light', 'dark'].indexOf(s.theme) >= 0 ? s.theme : DEFAULT_SETTINGS.theme,
       focus: typeof s.focus === 'number' && s.focus >= 0 && s.focus <= 5 ? Math.floor(s.focus) : DEFAULT_SETTINGS.focus,
-      shuffleOptions: typeof s.shuffleOptions === 'boolean' ? s.shuffleOptions : DEFAULT_SETTINGS.shuffleOptions
+      shuffleOptions: typeof s.shuffleOptions === 'boolean' ? s.shuffleOptions : DEFAULT_SETTINGS.shuffleOptions,
+      newPerDay: isNum(s.newPerDay) && s.newPerDay >= 1 && s.newPerDay <= NEW_PER_DAY_MAX ? Math.floor(s.newPerDay) : DEFAULT_SETTINGS.newPerDay,
+      targetRetention: isNum(s.targetRetention) && s.targetRetention >= 0.8 && s.targetRetention <= 0.95
+        ? Math.round(s.targetRetention * 100) / 100 : DEFAULT_SETTINGS.targetRetention,
+      fsrs: cleanFsrs(s.fsrs),
+      // When the "personalise scheduling" prompt was last shown or dismissed: { at, reviews }.
+      fsrsPrompt: s.fsrsPrompt && typeof s.fsrsPrompt === 'object' && dateOrNull(s.fsrsPrompt.at)
+        ? { at: s.fsrsPrompt.at, reviews: count(s.fsrsPrompt.reviews) } : null
     };
     return out;
+  }
+
+  // Points the scheduler at the saved weights and target retention.
+  function syncScheduler() {
+    if (!SET.fsrs) return;
+    var s = getSettings();
+    SET.fsrs.useWeights(s.fsrs && s.fsrs.weights);
+    SET.fsrs.useRetention(s.targetRetention);
   }
 
   function saveSettings(patch) {
     var s = getSettings();
     Object.keys(patch).forEach(function (k) { s[k] = patch[k]; });
     set('settings', s);
+    s = getSettings();
+    if ('fsrs' in patch || 'targetRetention' in patch) syncScheduler();
     return s;
   }
 
@@ -225,7 +311,8 @@
         entry: entry,
         bank: bank,
         progress: getProgress(entry.id),
-        sessions: getSessions(entry.id)
+        sessions: getSessions(entry.id),
+        reviews: getReviews(entry.id)
       });
     });
     return data;
@@ -257,6 +344,7 @@
     out.lastReview = dateOrNull(p.lastReview);
     out.lastAnswered = dateOrNull(p.lastAnswered);
     out.lastGrade = [1, 2, 3, 4].indexOf(p.lastGrade) >= 0 ? p.lastGrade : null;
+    if (dateOrNull(p.firstAnswered)) out.firstAnswered = p.firstAnswered;
     if (p.daySeen !== undefined) {
       out.daySeen = count(p.daySeen);
       out.dayCorrect = Math.min(count(p.dayCorrect), out.daySeen);
@@ -310,6 +398,9 @@
     if (!res.ok) return { ok: false, title: title, error: res.errors[0] || 'it is damaged' };
     var bank = res.bank;
     if (typeof item.bank.editedAt === 'string') bank.editedAt = item.bank.editedAt;
+    if (Array.isArray(item.bank.keepDuplicates)) {
+      bank.keepDuplicates = item.bank.keepDuplicates.filter(function (k) { return typeof k === 'string'; });
+    }
     var progress = {};
     var rawProgress = item.progress && typeof item.progress === 'object' && !Array.isArray(item.progress) ? item.progress : {};
     var known = SET.bank.byId(bank);
@@ -319,16 +410,20 @@
     });
     var entry = item.entry;
     var isDate = function (v) { return typeof v === 'string' && !isNaN(Date.parse(v)) ? v : null; };
+    var isDay = function (v) { return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null; };
     return { ok: true, item: {
       entry: {
         id: entry.id.trim(), title: bank.title,
         createdAt: isDate(entry.createdAt), updatedAt: isDate(entry.updatedAt), lastStudied: isDate(entry.lastStudied),
-        examDate: typeof entry.examDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(entry.examDate) ? entry.examDate : null,
-        examDatePrompted: !!entry.examDatePrompted
+        examDate: isDay(entry.examDate),
+        examDatePrompted: !!entry.examDatePrompted,
+        reviewFrom: isDay(entry.reviewFrom),
+        examCapClearedFor: isDay(entry.examCapClearedFor)
       },
       bank: bank,
       progress: progress,
-      sessions: Array.isArray(item.sessions) ? item.sessions.map(cleanSession).filter(Boolean) : []
+      sessions: Array.isArray(item.sessions) ? item.sessions.map(cleanSession).filter(Boolean) : [],
+      reviews: cleanReviews(item.reviews, known) // older backups have none
     } };
   }
 
@@ -355,7 +450,8 @@
     bank.id = id;
     var ok = set('bank:' + id, bank) &&
       set('progress:' + id, item.progress && typeof item.progress === 'object' ? item.progress : {}) &&
-      set('sessions:' + id, Array.isArray(item.sessions) ? item.sessions.slice(-SESSION_CAP) : []);
+      set('sessions:' + id, Array.isArray(item.sessions) ? item.sessions.slice(-SESSION_CAP) : []) &&
+      set('reviews:' + id, Array.isArray(item.reviews) ? item.reviews.slice(-REVIEW_LOG_CAP) : []);
     if (!ok) return false;
     var index = getIndex();
     index.banks = index.banks.filter(function (b) { return b.id !== id; });
@@ -367,6 +463,8 @@
       lastStudied: item.entry.lastStudied || null,
       examDate: item.entry.examDate || null,
       examDatePrompted: !!item.entry.examDatePrompted,
+      reviewFrom: item.entry.reviewFrom || null,
+      examCapClearedFor: item.entry.examCapClearedFor || null,
       questionCount: bank.questions.length
     });
     return saveIndex(index);
@@ -391,7 +489,10 @@
     }
     if (mode === 'replace') {
       deleteAll();
-      if (data.settings && typeof data.settings === 'object') saveSettings(data.settings);
+      if (data.settings && typeof data.settings === 'object') {
+        saveSettings(data.settings); // getSettings checks every value, including the fitted weights
+        syncScheduler();
+      }
     }
     for (var i = 0; i < items.length; i++) {
       var item = items[i];
@@ -409,6 +510,7 @@
 
   function deleteAll() {
     keys().forEach(function (k) { remove(k); });
+    syncScheduler();
   }
 
   // Probe once so a blocked storage shows its banner immediately.
@@ -443,6 +545,14 @@
     getSessions: getSessions,
     addSession: addSession,
     clearStudy: clearStudy,
+    REVIEW_LOG_CAP: REVIEW_LOG_CAP,
+    getReviews: getReviews,
+    logReview: logReview,
+    logReviews: logReviews,
+    removeReviews: removeReviews,
+    cleanReviews: cleanReviews,
+    NEW_PER_DAY_MAX: NEW_PER_DAY_MAX,
+    syncScheduler: syncScheduler,
     getActive: getActive,
     setActive: setActive,
     clearActive: clearActive,

@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Keep the CSV template exactly as Excel expects it (CRLF line endings, UTF-8 BOM)
+templates/*.csv -text

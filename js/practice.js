@@ -18,7 +18,7 @@
       startedAt: new Date().toISOString(),
       focus: typeof opts.focus === 'number' ? opts.focus : null,
       topics: opts.topics && opts.topics.length ? opts.topics.slice() : null,
-      maxIntervalDays: typeof opts.maxIntervalDays === 'number' ? opts.maxIntervalDays : null,
+      plan: !!opts.plan,
       size: ids.length,
       notice: opts.notice || null,
       round: 1,
@@ -37,7 +37,22 @@
     };
   }
 
-  // Records an answer. Only round 1 updates progress (retry rounds are not counted).
+  // The exam-date cap for one question, worked out at answer time from the bank's current exam date,
+  // so a date changed mid-session is respected. (Sessions saved by older versions may still carry a
+  // maxIntervalDays field; it is ignored.)
+  function examCap(bankId, id, when) {
+    var entry = SET.storage.getEntry(bankId);
+    return W.examCap(entry && entry.examDate, id, when);
+  }
+
+  // Applies one counted answer to progress and adds it to the review log.
+  // mode: 'p' (practice) or 'e' (exam).
+  function recordAnswer(bankId, progress, id, grade, when, mode) {
+    progress[id] = W.record(W.get(progress, id), grade, when, examCap(bankId, id, when));
+    SET.storage.logReview(bankId, id, when, grade, mode);
+  }
+
+  // Records an answer. Only round 1 updates progress (retry rounds are not counted or logged).
   // A wrong answer is recorded straight away as Again; a right one waits for applyRating.
   function applyAnswer(session, progress, q, selected, when) {
     var correct = W.isCorrect(selected, q.answer);
@@ -45,7 +60,7 @@
     if (correct) session.solved[q.id] = true;
     if (session.round === 1) {
       session.firstResults[q.id] = correct;
-      if (!correct) progress[q.id] = W.record(W.get(progress, q.id), 1, when, session.maxIntervalDays);
+      if (!correct) recordAnswer(session.bankId, progress, q.id, 1, when, 'p');
     }
     return correct;
   }
@@ -59,7 +74,7 @@
   // grade: 2 = Hard, 3 = Good, 4 = Easy.
   function applyRating(session, progress, q, grade, when) {
     if (!needsRating(session, q)) return;
-    progress[q.id] = W.record(W.get(progress, q.id), grade, when, session.maxIntervalDays);
+    recordAnswer(session.bankId, progress, q.id, grade, when, 'p');
   }
 
   function finishRound(session) {
@@ -102,16 +117,18 @@
     return questions.filter(function (q) { return topics.indexOf(q.topic || 'Unlabeled') >= 0; });
   }
 
-  // opts: { size, focus, topics } for a weighted test, or { ids } for a fixed list.
+  // opts: { size, focus, topics } for a weighted test, { ids } for a fixed list, or
+  // { plan: { due: true, newCount } } for today's session (everything due plus newCount new questions).
   function start(bankId, opts) {
     var bank = SET.storage.getBank(bankId);
     if (!bank) return;
     SET.ui.ensureNoActive(function () {
       var progress = SET.storage.getProgress(bankId);
-      var entry = SET.storage.getEntry(bankId);
       var ids, notice = null, focus = null, topics = null;
       if (opts.ids) {
         ids = W.shuffle(opts.ids);
+      } else if (opts.plan) {
+        ids = W.selectPractice(bank.questions, progress, 0, null, null, { plan: opts.plan }).ids;
       } else {
         focus = typeof opts.focus === 'number' ? opts.focus : SET.storage.getSettings().focus;
         topics = opts.topics && opts.topics.length ? opts.topics : null;
@@ -122,10 +139,7 @@
         notice = pick.notice;
       }
       if (!ids.length) return;
-      var session = createSession(bank, ids, progress, {
-        focus: focus, notice: notice, topics: topics,
-        maxIntervalDays: W.daysUntil(entry && entry.examDate)
-      });
+      var session = createSession(bank, ids, progress, { focus: focus, notice: notice, topics: topics, plan: !!opts.plan });
       SET.storage.setActive(session);
       SET.ui.go('#/bank/' + encodeURIComponent(bankId) + '/practice', true);
     });
@@ -469,6 +483,7 @@
     applyAnswer: applyAnswer,
     needsRating: needsRating,
     applyRating: applyRating,
+    examCap: examCap,
     topicPool: topicPool,
     finishRound: finishRound,
     startRetry: startRetry,
