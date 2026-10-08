@@ -108,12 +108,12 @@
       el('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: function () { clear(b); } }, 'Dismiss')));
   }
 
-  // opts: { title, body (string|node), actions: [{label, value, kind}], input: {label, match}, focus: value }
+  // opts: { title, body (string|node), actions: [{label, value, kind, check}], input: {label, match}, focus: value, focusEl, wide, guard }
   function dialog(opts) {
     return new Promise(function (resolve) {
       var titleId = nextId('dlg');
       var opener = document.activeElement;
-      var d = el('dialog', { class: 'dialog', 'aria-labelledby': titleId });
+      var d = el('dialog', { class: 'dialog' + (opts.wide ? ' dialog--wide' : ''), 'aria-labelledby': titleId });
       var done = false;
       var input = null;
       var buttons = [];
@@ -132,8 +132,8 @@
       (opts.actions || []).forEach(function (a) {
         var b = el('button', {
           type: 'button',
-          class: 'btn ' + (a.kind === 'primary' ? 'btn-primary' : a.kind === 'danger' ? 'btn-danger-solid' : a.kind === 'ghost' ? 'btn-ghost' : ''),
-          onclick: function () { close(a.value); }
+          class: 'btn ' + (a.kind === 'primary' ? 'btn-primary' : a.kind === 'danger' ? 'btn-danger-solid' : a.kind === 'ghost' ? 'btn-ghost' : a.kind === 'danger-ghost' ? 'btn-ghost btn-danger dialog__aside' : ''),
+          onclick: function () { if (a.check && !a.check()) return; close(a.value); } // check() false = keep open
         }, a.label);
         b._value = a.value;
         b._needsMatch = !!a.needsMatch;
@@ -167,12 +167,15 @@
         bodyNode,
         inputWrap,
         actions));
-      d.addEventListener('cancel', function (e) { e.preventDefault(); close(null); });
-      d.addEventListener('click', function (e) { if (e.target === d) close(null); });
+      // opts.guard() returning false keeps the dialog open on Esc or a click outside.
+      var dismiss = function () { if (!opts.guard || opts.guard()) close(null); };
+      d.addEventListener('cancel', function (e) { e.preventDefault(); dismiss(); });
+      d.addEventListener('click', function (e) { if (e.target === d) dismiss(); });
       document.body.appendChild(d);
       openDialogs.push({ d: d, close: close });
       d.showModal();
       if (input) input.focus();
+      else if (opts.focusEl) opts.focusEl.focus();
       else {
         var f = buttons.filter(function (b) { return b._value === opts.focus; })[0] || buttons[buttons.length - 1];
         if (f) f.focus();
@@ -258,6 +261,27 @@
       }));
   }
 
+  // Multi-select variant of segmented(): checkboxes, same look. onChange gets the checked values.
+  function checkGroup(label, options, checked, onChange) {
+    var picked = (checked || []).slice();
+    return el('fieldset', { class: 'segmented segmented--multi' },
+      el('legend', { class: 'sr-only' }, label),
+      options.map(function (o) {
+        var id = nextId('chk-opt');
+        return el('span', { class: 'segmented__item' },
+          el('input', {
+            type: 'checkbox', id: id, value: String(o.value), checked: picked.indexOf(o.value) >= 0,
+            onchange: function (e) {
+              var i = picked.indexOf(o.value);
+              if (e.target.checked && i < 0) picked.push(o.value);
+              if (!e.target.checked && i >= 0) picked.splice(i, 1);
+              onChange(picked.slice());
+            }
+          }),
+          el('label', { for: id, title: o.title || null }, o.label));
+      }));
+  }
+
   function focusControl(current, onChange) {
     var hint = el('p', { class: 'hint' }, W.FOCUS[current].hint);
     return el('div', { class: 'focus-control' },
@@ -312,8 +336,19 @@
     return el('div', { class: 'explanation' }, el('p', { class: 'explanation__label' }, 'Explanation'), el('p', null, text));
   }
 
-  function unverifiedNote() {
-    return el('p', { class: 'unverified' }, el('span', { 'aria-hidden': 'true' }, '⚠ '), 'This answer has not been verified — double-check it against the official documentation.');
+  // verify: optional { bankId, q }. Adds a link that marks the question verified on the spot.
+  function unverifiedNote(verify) {
+    var note = el('p', { class: 'unverified' }, el('span', { 'aria-hidden': 'true' }, '⚠ '), 'This answer has not been verified — double-check it against the official documentation.');
+    if (verify) {
+      note.appendChild(el('button', { class: 'link unverified__action', type: 'button', onclick: function () {
+        if (!SET.editor.setVerified(verify.bankId, verify.q.id, true)) { toast('Couldn’t save — the question may have been deleted.'); return; }
+        delete verify.q.unverified; // keep the on-screen copy in step
+        var done = el('p', { class: 'unverified is-verified', tabindex: '-1' }, el('span', { 'aria-hidden': 'true' }, '✓ '), 'Marked as verified.');
+        if (note.parentNode) note.parentNode.replaceChild(done, note);
+        done.focus();
+      } }, 'I’ve checked it — mark as verified'));
+    }
+    return note;
   }
 
   function answerTexts(q, idxs) {
@@ -336,7 +371,7 @@
         el('div', null, el('dt', null, 'Your answer'), el('dd', null, answerTexts(q, selected))),
         el('div', null, el('dt', null, 'Correct answer'), el('dd', { class: 'is-correct' }, answerTexts(q, q.answer)))),
       q.explanation ? explanation(q.explanation) : null,
-      q.unverified ? unverifiedNote() : null);
+      q.unverified ? unverifiedNote(o.verify) : null);
   }
 
   function scoreRing(pct, tone, caption) {
@@ -462,16 +497,40 @@
     }
     flash = {
       tone: 'ok',
-      title: "Updated '" + bank.title + "': +" + merged.added + ' new, ' + merged.removed + ' removed, ' + merged.kept + ' kept.',
+      title: "Updated '" + bank.title + "': +" + merged.added + ' new, ' + merged.removed + ' removed, ' + merged.kept + ' kept' +
+        (merged.reset ? ' (progress reset on ' + plural(merged.reset, 'question') + ' whose answer changed).' : '.'),
       res: res, bankId: bankId
     };
+  }
+
+  // Resolves true when it's fine to replace this bank from a file. Asks first if questions were
+  // edited, added or deleted in the app, since the file's version replaces those changes.
+  function confirmOverwrite(bankId) {
+    var bank = S.getBank(bankId);
+    if (!bank || !bank.editedAt) return Promise.resolve(true);
+    return dialog({
+      title: 'Replace your in-app changes?',
+      body: 'You changed questions in this app on ' + date(bank.editedAt) + '. Updating from the file replaces those changes with the file’s version.',
+      actions: [
+        { label: 'Cancel', value: null, kind: 'ghost' },
+        { label: 'Replace with the file', value: 'replace', kind: 'danger' },
+        { label: 'Download a copy, then update', value: 'download', kind: 'primary' }
+      ],
+      focus: 'download'
+    }).then(function (v) {
+      if (v === 'download') SET.editor.download(bank);
+      return v === 'download' || v === 'replace';
+    });
   }
 
   function handleBankFile(file, targetId) {
     readText(file).then(function (text) {
       var res = SET.bank.parse(text, file.name);
       if (!res.ok) { errorFlash(file.name, res); rerender(); return; }
-      if (targetId) { updateBank(targetId, res); rerender(); return; }
+      if (targetId) {
+        confirmOverwrite(targetId).then(function (ok) { if (ok) { updateBank(targetId, res); rerender(); } });
+        return;
+      }
       var title = res.bank.title.toLowerCase();
       var same = S.getIndex().banks.filter(function (b) { return String(b.title).toLowerCase() === title; })[0];
       if (!same) { addBank(res); rerender(); return; }
@@ -486,9 +545,12 @@
           { label: 'Update existing bank (keep progress)', value: 'update', kind: 'primary' }
         ]
       }).then(function (v) {
-        if (v === 'update') updateBank(same.id, res);
-        else if (v === 'add') addBank(res);
-        else return;
+        if (v === 'update') {
+          confirmOverwrite(same.id).then(function (ok) { if (ok) { updateBank(same.id, res); rerender(); } });
+          return;
+        }
+        if (v !== 'add') return;
+        addBank(res);
         rerender();
       });
     }, function () {
@@ -529,7 +591,11 @@
           var r = S.importBackup(data, mode);
           if (!r.ok) { showFlashNow({ tone: 'error', title: r.error }); return; }
           applyTheme();
-          showFlashNow({ tone: 'ok', title: 'Backup imported: ' + r.added + ' added, ' + r.updated + ' updated, ' + r.skipped + ' unchanged.' });
+          var skippedNote = r.rejected && r.rejected.length
+            ? ' Skipped ' + plural(r.rejected.length, 'damaged bank') + ': ' + r.rejected.map(function (x) { return '“' + x.title + '” (' + x.error + ')'; }).join('; ') + '.'
+            : '';
+          showFlashNow({ tone: r.rejected && r.rejected.length ? 'warn' : 'ok',
+            title: 'Backup imported: ' + r.added + ' added, ' + r.updated + ' updated, ' + r.skipped + ' unchanged.' + skippedNote });
         });
       });
     });
@@ -637,6 +703,24 @@
   }
 
   function bankCard(entry) {
+    try { return bankCardInner(entry); }
+    catch (e) { return brokenCard(entry); }
+  }
+
+  function brokenCard(entry) {
+    var title = typeof entry.title === 'string' && entry.title ? entry.title : 'Unnamed bank';
+    return el('li', { class: 'card bank-card' },
+      el('div', { class: 'bank-card__main' },
+        el('h2', { class: 'bank-card__title' }, title),
+        el('p', { class: 'muted small' }, 'This bank is damaged and can’t be shown. Delete it, then upload the file again or restore a backup.')),
+      el('div', { class: 'bank-card__actions' },
+        el('button', { class: 'btn btn-ghost btn-sm btn-danger', type: 'button', onclick: function () {
+          confirm('Delete this bank?', '“' + title + '” and its progress will be removed from this browser.', 'Delete bank', true)
+            .then(function (ok) { if (ok) { S.deleteBank(entry.id); toast('Bank deleted.'); rerender(); } });
+        } }, 'Delete')));
+  }
+
+  function bankCardInner(entry) {
     var bank = S.getBank(entry.id);
     var count = bank ? bank.questions.length : entry.questionCount;
     var c = bank ? W.counts(bank.questions, S.getProgress(entry.id)) : { mastered: 0, total: count };
@@ -645,7 +729,9 @@
     return el('li', { class: 'card bank-card' },
       el('div', { class: 'bank-card__main' },
         el('h2', { class: 'bank-card__title' }, el('a', { href: hash }, entry.title)),
-        el('p', { class: 'muted small' }, plural(count, 'question') + ' · Last studied ' + (entry.lastStudied ? date(entry.lastStudied) : 'never')),
+        el('p', { class: 'muted small' }, plural(count, 'question') +
+          (bank ? ' · ' + W.dueCount(bank.questions, S.getProgress(entry.id)).due + ' to review today' : '') +
+          ' · Last studied ' + (entry.lastStudied ? date(entry.lastStudied) : 'never')),
         el('div', { class: 'mastery' },
           progressBar(c.mastered, c.total || 1, 'Mastery'),
           el('span', { class: 'mastery__label num' }, mastery + '% mastered'))),
@@ -686,6 +772,25 @@
     var focus = settings.focus;
     var focusCtl = focusControl(focus, function (v) { focus = v; S.saveSettings({ focus: v }); });
 
+    // Topic filter: shown only when the bank has topics. Nothing ticked = all topics.
+    var hasTopics = bank.questions.some(function (q) { return q.topic; });
+    var topics = [];
+    var topicCtl = null;
+    if (hasTopics) {
+      var topicCounts = {};
+      bank.questions.forEach(function (q) { var t = q.topic || 'Unlabeled'; topicCounts[t] = (topicCounts[t] || 0) + 1; });
+      var topicHint = el('p', { class: 'hint' }, 'None ticked = all topics.');
+      topicCtl = el('div', { class: 'focus-control' },
+        checkGroup('Topics', Object.keys(topicCounts).sort().map(function (t) {
+          return { value: t, label: t + ' (' + topicCounts[t] + ')' };
+        }), topics, function (v) {
+          topics = v;
+          var inPool = SET.practice.topicPool(bank.questions, topics).length;
+          topicHint.textContent = topics.length ? plural(inPool, 'question') + ' in the selected topics.' : 'None ticked = all topics.';
+        }),
+        topicHint);
+    }
+
     // Exam panel
     var ex = bank.exam;
     var fCount = numberField('Questions', 'exam-count', Math.min(ex.questionCount, n), 1, n);
@@ -701,20 +806,25 @@
         el('div', null,
           el('h1', { tabindex: '-1' }, bank.title),
           el('p', { class: 'muted' }, plural(n, 'question') + (counts.total ? ' · ' + W.pct(counts.mastered, n) + '% mastered' : ''))),
-        el('a', { class: 'btn', href: hash + '/stats' }, statsIcon(), 'Stats')),
+        el('div', { class: 'actions' },
+          el('button', { class: 'btn', type: 'button', title: 'Download this bank as JSON, including any edits you made here',
+            onclick: function () { SET.editor.download(bank); toast('Bank downloaded.'); } }, 'Download bank'),
+          el('a', { class: 'btn', href: hash + '/stats' }, statsIcon(), 'Stats'))),
       bank.description ? el('p', { class: 'lead' }, bank.description) : null,
       active && active.bankId === bankId ? resumeCallout(active) : null,
       el('section', { class: 'card' },
         el('h2', { class: 'sr-only' }, 'Status'),
         statusBar(counts)),
+      studyPlan(bank, progress),
       el('div', { class: 'panels' },
         el('section', { class: 'card panel' },
           el('div', { class: 'panel__head' }, el('h2', null, 'Practice'), el('p', { class: 'muted small' }, 'Instant feedback. Weak questions come up more often.')),
           el('div', { class: 'field' }, el('p', { class: 'field__label' }, 'Test size'), sizes),
           el('div', { class: 'field' }, el('p', { class: 'field__label' }, 'Focus'), focusCtl),
+          topicCtl ? el('div', { class: 'field' }, el('p', { class: 'field__label' }, 'Topics'), topicCtl) : null,
           el('div', { class: 'panel__foot' },
             el('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: function () {
-              SET.practice.start(bankId, { size: sizeChoice === 'all' ? n : Math.min(sizeChoice, n), focus: focus });
+              SET.practice.start(bankId, { size: sizeChoice === 'all' ? n : Math.min(sizeChoice, n), focus: focus, topics: topics });
             } }, 'Start practice'))),
         el('section', { class: 'card panel' },
           el('div', { class: 'panel__head' }, el('h2', null, 'Exam'), el('p', { class: 'muted small' }, 'Random questions, timed, no feedback until you submit.')),
@@ -727,6 +837,135 @@
               examError.textContent = '';
               SET.exam.start(bankId, { count: c, timeLimitMinutes: t, passMarkPercent: p });
             } }, 'Start exam'))))));
+  }
+
+  function examDateHint(examDate) {
+    var days = W.daysUntil(examDate);
+    if (days === null) return 'Optional. Set it so everything you study comes back for review before the exam.';
+    if (days === 0) return 'Your exam is today. Good luck!';
+    if (days < 0) return 'This date has passed. Change it if you’ve rebooked.';
+    return plural(days, 'day') + ' to go. Anything you study now comes back for review before your exam.';
+  }
+
+  // Readiness per topic (exam domain), weakest first, so weak areas show before the exam.
+  // Topics not started yet show as such rather than as a guessing-level percentage.
+  function topicReadiness(rows, weights, pass, adjust) {
+    var started = rows.filter(function (r) { return r.seen; });
+    var weakest = started[0];
+    var showWeight = !!weights;
+    return el('details', { class: 'plan__topics', open: true },
+      el('summary', null, 'Readiness by topic' + (weakest ? ' — weakest: ' + weakest.topic + ' (' + adjust(weakest.percent) + '%)' : '')),
+      el('div', { class: 'table-wrap' },
+        el('table', { class: 'table' },
+          el('thead', null, el('tr', null,
+            el('th', { scope: 'col' }, 'Topic'),
+            showWeight ? el('th', { scope: 'col', class: 'num' }, 'Exam weight') : null,
+            el('th', { scope: 'col', class: 'num' }, 'Seen'),
+            el('th', { scope: 'col', class: 'num' }, 'Readiness'),
+            el('th', { scope: 'col' }, el('span', { class: 'sr-only' }, 'Against the pass mark')))),
+          el('tbody', null, started.concat(rows.filter(function (r) { return !r.seen; })).map(function (r) {
+            var value = adjust(r.percent);
+            var ok = value >= pass;
+            var w = weights && typeof weights[r.topic] === 'number' ? Math.round(weights[r.topic]) + '%' : '—';
+            return el('tr', null,
+              el('td', null, r.topic),
+              showWeight ? el('td', { class: 'num' }, w) : null,
+              el('td', { class: 'num' }, r.seen + ' / ' + r.total),
+              el('td', { class: 'num' }, r.seen ? value + '%' : '—'),
+              el('td', null, r.seen
+                ? el('span', { class: 'result-tag ' + (ok ? 'is-pass' : 'is-fail') }, ok ? '✓ At or above' : '✕ Below')
+                : el('span', { class: 'muted small' }, 'Not started')));
+          })))));
+  }
+
+  // Today's reviews, the readiness estimate and the exam date. Asks for the date once per bank.
+  function studyPlan(bank, progress) {
+    var bankId = bank.id;
+    var entry = S.getEntry(bankId) || {};
+    var examDate = entry.examDate || null;
+    var due = W.dueCount(bank.questions, progress);
+    var weights = bank.exam && bank.exam.topicWeights;
+    var now = W.readiness(bank.questions, progress, weights);
+    var pass = bank.exam.passMarkPercent;
+    // Correct the estimate by how far off it has been on this bank's own mock exams.
+    var cal = W.calibration(S.getSessions(bankId));
+    var adjust = function (x) { return Math.max(0, Math.min(100, x + cal.bias)); };
+    var fromExams = cal.exams === 1 ? 'your mock exam' : 'your last ' + cal.exams + ' mock exams';
+    var calNote = cal.exams
+      ? (cal.bias ? 'Adjusted ' + (cal.bias > 0 ? '+' : '−') + Math.abs(cal.bias) + ' from ' + fromExams : 'Matches ' + fromExams)
+      : 'Take a mock exam to calibrate it';
+
+    // Chance of passing a mock exam from this set at the bank's default size and pass mark. Shown once
+    // enough of the set has been seen (or a mock exam has calibrated the estimate); before that the
+    // unseen questions count as guesses and the figure says more about coverage than knowledge.
+    var examSize = Math.min(bank.exam.questionCount, bank.questions.length);
+    var enough = now.coverage >= W.PASS_CHANCE_MIN_COVERAGE || cal.exams > 0;
+    var stillToSee = Math.max(0, Math.ceil(W.PASS_CHANCE_MIN_COVERAGE / 100 * now.total) - now.seen);
+    var chance = now.seen && enough ? W.passChance(adjust(now.percent), examSize, pass, S.getSessions(bankId)) : null;
+    var chanceText = chance ? (chance.percent >= 99 ? '>99%' : chance.percent <= 1 ? '<1%' : '~' + chance.percent + '%') : '';
+    var chanceBand = chance ? { likely: 'Likely', borderline: 'Borderline', unlikely: 'Unlikely' }[chance.band] : '';
+
+    var tiles = el('div', { class: 'tiles' },
+      tile('To review today', String(due.due), due.due ? 'Due for review, or answered wrong last time'
+        : due['new'] ? 'Nothing due. ' + plural(due['new'], 'new question') + ' to learn.' : 'Nothing due. Anything more is extra practice.'),
+      tile('Readiness', now.seen ? adjust(now.percent) + '%' : '—', now.seen
+        ? 'Expected mock exam score today · assumed pass mark ' + pass + '% · ' + calNote +
+          (now.coverage < 50 ? ' · rough: only ' + now.coverage + '% of questions seen' : '')
+        : 'Answer some questions to get an estimate'),
+      chance ? tile('Chance of passing', chanceText, chanceBand + ' · a ' + examSize + '-question mock exam from this set, assumed ' + pass + '% pass mark')
+        : now.seen ? tile('Chance of passing', 'Not yet', 'Answer ' + plural(stillToSee, 'more question') + ' or take a mock exam first') : null);
+
+    var byTopic = now.seen && now.byTopic.length > 1 ? topicReadiness(now.byTopic, weights, pass, adjust) : null;
+
+    // While a date is typed, the browser reports partial years (0002, 0020, 0202...). Only plausible
+    // dates are saved, and the card refreshes once the field loses focus, so typing isn't interrupted.
+    var dateId = nextId('exam-date');
+    var dateHint = el('p', { class: 'hint' }, examDateHint(examDate));
+    var changed = false;
+    var refresh = function () {
+      if (!changed || !card.parentNode) return;
+      changed = false;
+      card.parentNode.replaceChild(studyPlan(S.getBank(bankId) || bank, S.getProgress(bankId)), card);
+    };
+    var dateInput = el('input', { id: dateId, class: 'input num', type: 'date', value: examDate || '',
+      min: '2000-01-01', max: '2099-12-31',
+      onchange: function () {
+        var raw = dateInput.value;
+        var ok = /^(\d{4})-\d{2}-\d{2}$/.exec(raw);
+        if (raw && !(ok && Number(ok[1]) >= 2000 && Number(ok[1]) <= 2099)) return; // still typing
+        var v = raw || null;
+        S.touch(bankId, { examDate: v, examDatePrompted: true });
+        dateHint.textContent = examDateHint(v);
+        changed = true;
+        if (document.activeElement !== dateInput) refresh(); // picked from the calendar
+      },
+      onblur: function () { refresh(); } });
+    var dateField = el('div', { class: 'field' }, el('label', { class: 'field__label', for: dateId }, 'Exam date'), dateInput);
+
+    var dateRow;
+    if (!examDate && !entry.examDatePrompted) {
+      dateRow = callout(el('p', { class: 'callout__title' }, 'When is your exam?'), 'info', [
+        el('p', null, 'Set the date and everything you study comes back for review before the day. You can change it any time.'),
+        el('div', { class: 'plan__date' }, dateField,
+          el('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: function () {
+            S.touch(bankId, { examDatePrompted: true });
+            rerender();
+          } }, 'No date yet'))
+      ]);
+    } else {
+      dateRow = el('div', { class: 'plan__date' }, dateField, dateHint);
+    }
+
+    var card = el('section', { class: 'card plan' },
+      el('h2', null, 'Study plan'),
+      tiles,
+      now.seen ? el('p', { class: 'plan__disclaimer small' }, el('strong', null, 'For this question set only. '),
+        'Readiness and chance of passing describe a mock exam drawn from the questions you uploaded. They are not a guarantee of your result on the real exam, which uses different questions. The ' + pass +
+        '% pass mark is this bank’s setting; the real exam’s cut score may differ and isn’t always published.') : null,
+      byTopic,
+      dateRow,
+      el('p', { class: 'muted small' }, 'Readiness is the score you’d expect on a mock exam from this question set. It blends how well you remember each question with how often you get it right, counts unseen questions as guesses, and is corrected by your recent mock exam results.'));
+    return card;
   }
 
   function numberField(label, idBase, value, min, max) {
@@ -837,6 +1076,7 @@
       var sub = parts[2];
       if (!sub && parts.length === 2) return { name: 'bank', id: parts[1] };
       if ((sub === 'practice' || sub === 'exam' || sub === 'stats') && parts.length === 3) return { name: sub, id: parts[1] };
+      if (sub === 'result' && parts[3] && parts.length === 4) return { name: 'result', id: parts[1], sid: parts[3] };
     }
     return { name: 'unknown' };
   }
@@ -865,15 +1105,20 @@
     var main = document.getElementById('main');
     clear(main);
     var r = currentRoute();
-    var titles = { library: 'Library', settings: 'Settings', bank: null, practice: 'Practice', exam: 'Exam', stats: 'Stats' };
-    switch (r.name) {
-      case 'library': renderLibrary(main); break;
-      case 'settings': renderSettings(main); break;
-      case 'bank': renderBankHome(main, r.id); break;
-      case 'practice': SET.practice.render(main, r.id); break;
-      case 'exam': SET.exam.render(main, r.id); break;
-      case 'stats': SET.stats.render(main, r.id); break;
-      default: go('#/', true); return;
+    var titles = { library: 'Library', settings: 'Settings', bank: null, practice: 'Practice', exam: 'Exam', stats: 'Stats', result: 'Exam results' };
+    try {
+      switch (r.name) {
+        case 'library': renderLibrary(main); break;
+        case 'settings': renderSettings(main); break;
+        case 'bank': renderBankHome(main, r.id); break;
+        case 'practice': SET.practice.render(main, r.id); break;
+        case 'exam': SET.exam.render(main, r.id); break;
+        case 'stats': SET.stats.render(main, r.id); break;
+        case 'result': SET.exam.renderSaved(main, r.id, r.sid); break;
+        default: go('#/', true); return;
+      }
+    } catch (e) {
+      renderBroken(main, r, e);
     }
     var bank = r.id ? S.getEntry(r.id) : null;
     var parts = [titles[r.name], bank ? bank.title : null, APP_NAME].filter(Boolean);
@@ -883,6 +1128,26 @@
     });
     if (!firstRoute) { window.scrollTo(0, 0); focusHeading(); }
     firstRoute = false;
+  }
+
+  // Shown when a page throws while drawing (usually damaged stored data), so the app never goes blank.
+  function renderBroken(main, r, e) {
+    clear(main);
+    var entry = r.id ? S.getEntry(r.id) : null;
+    var title = entry && typeof entry.title === 'string' ? entry.title : null;
+    main.appendChild(el('section', { class: 'screen' },
+      el('a', { class: 'back-link', href: '#/' }, '← All banks'),
+      el('h1', { tabindex: '-1' }, 'This page couldn’t be shown'),
+      callout(el('p', null, (title ? '“' + title + '” may be damaged. ' : 'Something stored in this browser may be damaged. ') +
+        'You can delete it, then upload the file again or restore a backup.'), 'error',
+        el('p', { class: 'small muted' }, 'Details: ' + (e && e.message ? e.message : String(e)))),
+      el('div', { class: 'actions actions--wrap' },
+        entry ? el('button', { class: 'btn btn-danger', type: 'button', onclick: function () {
+          confirm('Delete this bank?', (title ? '“' + title + '”' : 'This bank') + ' and its progress will be removed from this browser.', 'Delete bank', true)
+            .then(function (ok) { if (ok) { S.deleteBank(r.id); flash = { tone: 'ok', title: 'Bank deleted.' }; go('#/'); } });
+        } }, 'Delete this bank') : null,
+        S.getActive() ? el('button', { class: 'btn', type: 'button', onclick: function () { S.clearActive(); go('#/'); } }, 'Discard the unfinished session') : null,
+        el('a', { class: 'btn btn-primary', href: '#/' }, 'Back to library'))));
   }
 
   function rerender() {
@@ -917,10 +1182,11 @@
   SET.ui = {
     el: el, svg: svg, clear: clear, date: date, clock: clock,
     announce: announce, toast: toast, dialog: dialog, confirm: confirm, typedConfirm: typedConfirm, closeDialogs: closeDialogs,
-    callout: callout, progressBar: progressBar, chip: chip, statusBar: statusBar, segmented: segmented,
+    callout: callout, progressBar: progressBar, chip: chip, statusBar: statusBar, segmented: segmented, checkGroup: checkGroup,
     focusControl: focusControl, optionList: optionList, explanation: explanation, unverifiedNote: unverifiedNote,
     reviewItem: reviewItem, scoreRing: scoreRing, fact: fact, tile: tile, setTimer: setTimer,
-    ensureNoActive: ensureNoActive, go: go, rerender: rerender, onLeave: onLeave, focusHeading: focusHeading
+    ensureNoActive: ensureNoActive, go: go, rerender: rerender, onLeave: onLeave, focusHeading: focusHeading,
+    downloadJson: downloadJson, plural: plural, nextId: nextId
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

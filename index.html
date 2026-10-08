@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,7 +9,7 @@
   <script>
     /* Apply the saved theme before first paint to avoid a flash. */
     (function () {
-      var t = 'dark';
+      var t = 'system';
       try {
         var s = JSON.parse(localStorage.getItem('set:v1:settings') || 'null');
         if (s && (s.theme === 'light' || s.theme === 'dark' || s.theme === 'system')) t = s.theme;
@@ -61,10 +61,12 @@
 
   <script src="js/storage.js"></script>
   <script src="js/bank.js"></script>
+  <script src="js/fsrs.js"></script>
   <script src="js/weighting.js"></script>
   <script src="js/practice.js"></script>
   <script src="js/exam.js"></script>
   <script src="js/stats.js"></script>
+  <script src="js/editor.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

@@ -4,8 +4,9 @@
   var SET = window.SET = window.SET || {};
 
   var prefix = 'set:v1:';
-  var SCHEMA_VERSION = 1;
+  var SCHEMA_VERSION = 2; // 2: FSRS progress records (older records are converted when read)
   var SESSION_CAP = 200;
+  var REVIEW_CAP = 30; // exam sessions that keep their full answer review
   var QUOTA_MSG = 'Storage full — export a backup and delete unused banks.';
   var UNAVAILABLE_MSG = 'Browser storage is unavailable, so nothing will be saved. Allow site data for this page, or use a normal (not private) window.';
   var BACKUP_FORMAT = 'set-backup';
@@ -71,12 +72,13 @@
   /* ---------- index + migration ---------- */
 
   // Upgrades an index (and the data it points to) from older schema versions.
-  // Only version 1 exists so far; future versions add steps here.
+  // Version 1 → 2 needs no rewrite here: old progress records are converted when read (weighting.js).
+  // The bump makes older copies of the app refuse newer backups instead of misreading them.
   function migrate(index) {
     if (!index || typeof index !== 'object') index = { version: SCHEMA_VERSION, banks: [] };
     if (!Array.isArray(index.banks)) index.banks = [];
     if (!index.version) index.version = SCHEMA_VERSION;
-    // if (index.version < 2) { ...upgrade...; index.version = 2; }
+    if (index.version < 2) index.version = 2;
     return index;
   }
 
@@ -93,6 +95,7 @@
     return null;
   }
 
+  // Sets fields on a bank's index entry (updatedAt, lastStudied, examDate as "YYYY-MM-DD" or null, ...).
   function touch(bankId, fields) {
     var index = getIndex();
     for (var i = 0; i < index.banks.length; i++) {
@@ -159,6 +162,10 @@
     var list = getSessions(bankId);
     list.push(summary);
     if (list.length > SESSION_CAP) list = list.slice(-SESSION_CAP);
+    var withReview = 0;
+    for (var i = list.length - 1; i >= 0; i--) {
+      if (list[i] && list[i].review && ++withReview > REVIEW_CAP) delete list[i].review;
+    }
     if (!set('sessions:' + bankId, list)) return false;
     return touch(bankId, { updatedAt: nowIso(), lastStudied: nowIso() });
   }
@@ -182,13 +189,13 @@
 
   /* ---------- settings ---------- */
 
-  var DEFAULT_SETTINGS = { theme: 'dark', focus: 2, shuffleOptions: true };
+  var DEFAULT_SETTINGS = { theme: 'system', focus: 2, shuffleOptions: true };
 
   function getSettings() {
     var s = get('settings', {}) || {};
     var out = {
       theme: ['system', 'light', 'dark'].indexOf(s.theme) >= 0 ? s.theme : DEFAULT_SETTINGS.theme,
-      focus: typeof s.focus === 'number' && s.focus >= 0 && s.focus <= 4 ? Math.floor(s.focus) : DEFAULT_SETTINGS.focus,
+      focus: typeof s.focus === 'number' && s.focus >= 0 && s.focus <= 5 ? Math.floor(s.focus) : DEFAULT_SETTINGS.focus,
       shuffleOptions: typeof s.shuffleOptions === 'boolean' ? s.shuffleOptions : DEFAULT_SETTINGS.shuffleOptions
     };
     return out;
@@ -224,6 +231,107 @@
     return data;
   }
 
+  function isNum(v) { return typeof v === 'number' && isFinite(v); }
+  function count(v) { return isNum(v) && v >= 0 ? Math.floor(v) : 0; }
+  function dateOrNull(v) { return typeof v === 'string' && !isNaN(Date.parse(v)) ? v : null; }
+
+  // A progress record from a backup with every value checked. null when its core is unusable,
+  // so that question simply starts as New. Handles both the current and the pre-FSRS shape.
+  function cleanRecord(p) {
+    if (!p || typeof p !== 'object' || Array.isArray(p)) return null;
+    var out = { seen: count(p.seen), correct: count(p.correct), streak: count(p.streak) };
+    out.correct = Math.min(out.correct, out.seen);
+    if (p.reps === undefined) { // pre-FSRS record, converted when read
+      if (!out.seen) return null;
+      out.lastSeen = dateOrNull(p.lastSeen);
+      out.lastCorrect = typeof p.lastCorrect === 'boolean' ? p.lastCorrect : null;
+      return out;
+    }
+    if (!isNum(p.reps) || p.reps < 1) return null;
+    if (!isNum(p.stability) || p.stability <= 0 || !isNum(p.difficulty) || p.difficulty < 1 || p.difficulty > 10) return null;
+    out.reps = Math.floor(p.reps);
+    out.lapses = count(p.lapses);
+    out.stability = p.stability;
+    out.difficulty = p.difficulty;
+    out.due = dateOrNull(p.due);
+    out.lastReview = dateOrNull(p.lastReview);
+    out.lastAnswered = dateOrNull(p.lastAnswered);
+    out.lastGrade = [1, 2, 3, 4].indexOf(p.lastGrade) >= 0 ? p.lastGrade : null;
+    if (p.daySeen !== undefined) {
+      out.daySeen = count(p.daySeen);
+      out.dayCorrect = Math.min(count(p.dayCorrect), out.daySeen);
+    }
+    return out;
+  }
+
+  // A session summary from a backup with every value checked; null when it can't be shown.
+  function cleanSession(s) {
+    if (!s || typeof s !== 'object' || Array.isArray(s)) return null;
+    if ((s.mode !== 'practice' && s.mode !== 'exam') || !isNum(s.scorePercent) || s.scorePercent < 0 || s.scorePercent > 100 ||
+      !isNum(s.size) || s.size < 1 || !dateOrNull(s.endedAt)) return null;
+    var out = {
+      id: typeof s.id === 'string' ? s.id : newId(), mode: s.mode,
+      startedAt: dateOrNull(s.startedAt) || s.endedAt, endedAt: s.endedAt,
+      size: Math.floor(s.size), firstAttemptCorrect: Math.min(count(s.firstAttemptCorrect), Math.floor(s.size)),
+      scorePercent: s.scorePercent
+    };
+    if (isNum(s.focus)) out.focus = s.focus;
+    if (s.mode === 'exam') {
+      out.passed = !!s.passed;
+      if (isNum(s.passMarkPercent)) out.passMarkPercent = s.passMarkPercent;
+      if (isNum(s.timeUsedSec)) out.timeUsedSec = Math.max(0, s.timeUsedSec);
+      if (isNum(s.answered)) out.answered = Math.min(count(s.answered), out.size);
+      if (isNum(s.predicted) && s.predicted >= 0 && s.predicted <= 100) out.predicted = s.predicted;
+      var rv = s.review;
+      if (rv && Array.isArray(rv.items)) {
+        var items = rv.items.filter(function (i) { return i && typeof i.id === 'string'; }).map(function (i) {
+          return { id: i.id, selected: Array.isArray(i.selected) ? i.selected.filter(isNum) : [], correct: i.correct === true, flagged: i.flagged === true };
+        });
+        var byTopic = Array.isArray(rv.byTopic) ? rv.byTopic.filter(function (t) {
+          return t && typeof t.topic === 'string' && isNum(t.correct) && isNum(t.total) && isNum(t.scorePercent);
+        }).map(function (t) {
+          return { topic: t.topic, correct: t.correct, total: t.total, scorePercent: t.scorePercent, weight: isNum(t.weight) ? t.weight : null };
+        }) : null;
+        out.review = { items: items, byTopic: byTopic && byTopic.length ? byTopic : null };
+      }
+    }
+    return out;
+  }
+
+  // Rebuilds one backup item from trusted parts: the bank goes through the same checks as an upload
+  // (bank.js normalise), progress keeps only record objects, sessions only objects.
+  // Returns { ok, item } or { ok: false, title, error }.
+  function cleanBackupItem(item, n) {
+    var title = item && item.bank && typeof item.bank.title === 'string' && item.bank.title.trim() ? item.bank.title.trim() : 'Bank ' + n;
+    if (!item || !item.entry || typeof item.entry.id !== 'string' || !item.entry.id.trim() || !item.bank) {
+      return { ok: false, title: title, error: 'it is incomplete' };
+    }
+    var res = SET.bank && SET.bank.normalise ? SET.bank.normalise(item.bank, title) : { ok: false, errors: ['the app could not check it'] };
+    if (!res.ok) return { ok: false, title: title, error: res.errors[0] || 'it is damaged' };
+    var bank = res.bank;
+    if (typeof item.bank.editedAt === 'string') bank.editedAt = item.bank.editedAt;
+    var progress = {};
+    var rawProgress = item.progress && typeof item.progress === 'object' && !Array.isArray(item.progress) ? item.progress : {};
+    var known = SET.bank.byId(bank);
+    Object.keys(rawProgress).forEach(function (id) {
+      var p = known[id] ? cleanRecord(rawProgress[id]) : null; // only questions that exist in this bank
+      if (p) progress[id] = p;
+    });
+    var entry = item.entry;
+    var isDate = function (v) { return typeof v === 'string' && !isNaN(Date.parse(v)) ? v : null; };
+    return { ok: true, item: {
+      entry: {
+        id: entry.id.trim(), title: bank.title,
+        createdAt: isDate(entry.createdAt), updatedAt: isDate(entry.updatedAt), lastStudied: isDate(entry.lastStudied),
+        examDate: typeof entry.examDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(entry.examDate) ? entry.examDate : null,
+        examDatePrompted: !!entry.examDatePrompted
+      },
+      bank: bank,
+      progress: progress,
+      sessions: Array.isArray(item.sessions) ? item.sessions.map(cleanSession).filter(Boolean) : []
+    } };
+  }
+
   // Returns an error string, or null if the backup looks usable.
   function checkBackup(data) {
     if (!data || typeof data !== 'object' || data.format !== BACKUP_FORMAT || !Array.isArray(data.banks)) {
@@ -257,6 +365,8 @@
       createdAt: item.entry.createdAt || nowIso(),
       updatedAt: item.entry.updatedAt || nowIso(),
       lastStudied: item.entry.lastStudied || null,
+      examDate: item.entry.examDate || null,
+      examDatePrompted: !!item.entry.examDatePrompted,
       questionCount: bank.questions.length
     });
     return saveIndex(index);
@@ -264,16 +374,27 @@
 
   // mode: "replace" wipes everything first; "merge" adds missing banks and,
   // for a bank that exists in both, keeps the copy with the newer updatedAt.
+  // Damaged banks are skipped and listed in result.rejected ([{ title, error }]). Everything is
+  // checked before "replace" deletes anything, so a damaged backup can't wipe your data.
   function importBackup(data, mode) {
     var err = checkBackup(data);
     if (err) return { ok: false, error: err };
-    var result = { ok: true, added: 0, updated: 0, skipped: 0 };
+    var result = { ok: true, added: 0, updated: 0, skipped: 0, rejected: [] };
+    var items = [];
+    data.banks.forEach(function (raw, i) {
+      var c = cleanBackupItem(raw, i + 1);
+      if (c.ok) items.push(c.item); else result.rejected.push({ title: c.title, error: c.error });
+    });
+    if (data.banks.length && !items.length) {
+      return { ok: false, error: 'None of the banks in this backup could be read, so nothing was changed. First problem: "' +
+        result.rejected[0].title + '": ' + result.rejected[0].error };
+    }
     if (mode === 'replace') {
       deleteAll();
-      if (data.settings) saveSettings(data.settings);
+      if (data.settings && typeof data.settings === 'object') saveSettings(data.settings);
     }
-    for (var i = 0; i < data.banks.length; i++) {
-      var item = data.banks[i];
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
       var existing = getEntry(item.entry.id);
       if (existing) {
         var theirs = Date.parse(item.entry.updatedAt) || 0;
@@ -313,6 +434,7 @@
     migrate: migrate,
     getIndex: getIndex,
     getEntry: getEntry,
+    touch: touch,
     getBank: getBank,
     saveBank: saveBank,
     deleteBank: deleteBank,
@@ -329,6 +451,9 @@
     exportBackup: exportBackup,
     checkBackup: checkBackup,
     importBackup: importBackup,
+    cleanBackupItem: cleanBackupItem,
+    cleanRecord: cleanRecord,
+    cleanSession: cleanSession,
     deleteAll: deleteAll
   };
 })();

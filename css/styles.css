@@ -148,7 +148,7 @@ h2 { font-size: 1.1rem; font-weight: 650; }
 p { margin: 0; }
 a { color: var(--accent); }
 ul, ol { margin: 0; padding: 0; }
-button, input { font: inherit; color: inherit; }
+button, input, textarea { font: inherit; color: inherit; }
 svg { flex-shrink: 0; }
 
 .num { font-variant-numeric: tabular-nums; }
@@ -341,6 +341,7 @@ svg { flex-shrink: 0; }
 .segmented input:checked + label { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-ring); }
 .segmented input:focus-visible + label { outline: 2px solid var(--focus); outline-offset: 1px; }
 .segmented input:disabled + label { opacity: 0.4; cursor: not-allowed; background: none; }
+.segmented--multi label { white-space: normal; padding-top: 8px; padding-bottom: 8px; }
 
 .switch { position: relative; display: inline-flex; width: 52px; height: 44px; align-items: center; flex-shrink: 0; }
 .switch__input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
@@ -531,6 +532,9 @@ svg { flex-shrink: 0; }
 .explanation__label { font-size: 0.75rem; font-weight: 750; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 4px; }
 .unverified { padding: 10px 14px; border-radius: var(--radius-sm); background: var(--warn-soft); color: var(--text); font-size: 0.9rem; border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); }
 .unverified span { color: var(--warn); }
+.unverified__action { margin-left: 6px; font-size: inherit; }
+.unverified.is-verified { background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
+.unverified.is-verified span { color: var(--ok); }
 
 .question-card .actions { justify-content: flex-end; }
 
@@ -720,6 +724,32 @@ th[aria-sort="ascending"] .th-sort__arrow, th[aria-sort="descending"] .th-sort__
 .dialog__list { padding-left: 20px; color: var(--text-muted); display: grid; gap: 6px; margin-top: 8px; font-size: 0.92rem; }
 .dialog__list strong { color: var(--text); }
 .dialog__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+.dialog--wide { max-width: 720px; }
+.dialog__aside { margin-right: auto; }
+
+/* ---------- question editor ---------- */
+
+.textarea { min-height: 0; padding: 10px 12px; resize: vertical; line-height: 1.45; }
+.editor { display: flex; flex-direction: column; gap: 14px; }
+.editor-options { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.editor-option { display: flex; align-items: center; gap: 8px; }
+.editor-option .input { flex: 1; }
+.editor-option__correct { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; flex-shrink: 0; }
+.editor-option__correct input, .editor-check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.editor-check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.92rem; }
+
+/* ---------- study plan (bank page) ---------- */
+
+.plan { display: flex; flex-direction: column; gap: 14px; }
+.plan .tile { box-shadow: none; }
+.plan__date { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; }
+.plan__date .field { flex: 0 1 220px; }
+.plan__date .hint { margin: 0 0 12px; flex: 1 1 220px; }
+.plan__disclaimer { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-muted); }
+.plan__disclaimer strong { color: var(--text); }
+.plan__topics summary { cursor: pointer; font-weight: 650; padding: 4px 0; }
+.plan__topics .table-wrap { margin-top: 8px; }
+.plan__topics td.num, .plan__topics td:last-child { white-space: nowrap; }
 
 .noscript { padding: 24px; text-align: center; }
 

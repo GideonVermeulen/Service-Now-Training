@@ -12,7 +12,8 @@
 
   function createSession(bank, opts, rng, now) {
     now = now || Date.now();
-    var ids = W.selectUniform(bank.questions.map(function (q) { return q.id; }), opts.count, rng);
+    // Spread questions across topics like the real exam (blueprint weights, else each topic's share of the bank).
+    var ids = W.selectStratified(bank.questions, (bank.exam && bank.exam.topicWeights) || null, opts.count, rng);
     var orders = {};
     var qmap = SET.bank.byId(bank);
     ids.forEach(function (id) { orders[id] = W.optionOrder(qmap[id].options.length, opts.shuffle !== false, rng); });
@@ -29,12 +30,15 @@
       index: 0,
       timeLimitMinutes: opts.timeLimitMinutes,
       passMarkPercent: opts.passMarkPercent,
+      maxIntervalDays: typeof opts.maxIntervalDays === 'number' ? opts.maxIntervalDays : null,
+      topicWeights: (bank.exam && bank.exam.topicWeights) || null,
       endsAt: opts.timeLimitMinutes > 0 ? now + opts.timeLimitMinutes * 60000 : null,
       warned: 0
     };
   }
 
-  // Scores the exam and applies every answer to progress. Unanswered = wrong (not recorded).
+  // Scores the exam and applies every answer to progress as Good (right) or Again (wrong).
+  // Unanswered = wrong (not recorded).
   function grade(session, qmap, progress, now) {
     now = now || Date.now();
     var when = new Date(now).toISOString();
@@ -43,15 +47,20 @@
       var sel = session.answers[id] || [];
       var answered = sel.length > 0;
       var correct = answered && W.isCorrect(sel, q.answer);
-      if (answered) progress[id] = W.record(W.get(progress, id), correct, when);
+      if (answered) progress[id] = W.record(W.get(progress, id), correct ? 3 : 1, when, session.maxIntervalDays);
       return { id: id, selected: sel, answered: answered, correct: correct, flagged: !!session.flags[id] };
     });
     var correct = items.filter(function (i) { return i.correct; }).length;
+    var answeredCount = items.filter(function (i) { return i.answered; }).length;
+    var predicted = typeof session.predicted === 'number' ? session.predicted : null;
     var end = session.endsAt ? Math.min(now, session.endsAt) : now;
     var scorePercent = W.pct(correct, items.length);
+    var byTopic = topicBreakdown(items, qmap, session.topicWeights);
     return {
       bankId: session.bankId,
       items: items,
+      byTopic: byTopic,
+      predicted: predicted,
       correct: correct,
       total: items.length,
       scorePercent: scorePercent,
@@ -63,9 +72,61 @@
         size: items.length, firstAttemptCorrect: correct, scorePercent: scorePercent,
         passed: scorePercent >= session.passMarkPercent,
         timeUsedSec: Math.max(0, Math.round((end - session.startedMs) / 1000)),
-        passMarkPercent: session.passMarkPercent
+        passMarkPercent: session.passMarkPercent,
+        answered: answeredCount,
+        predicted: predicted === null ? undefined : predicted,
+        // Kept so the results can be reopened from Stats (storage keeps this for recent exams only).
+        review: {
+          items: items.map(function (i) { return { id: i.id, selected: i.selected, correct: i.correct, flagged: i.flagged }; }),
+          byTopic: byTopic
+        }
       }
     };
+  }
+
+  // Rebuilds a results view from a saved exam summary. null if the summary has no saved review.
+  function resultFromSummary(bankId, s) {
+    if (!s || s.mode !== 'exam' || !s.review || !Array.isArray(s.review.items)) return null;
+    return {
+      bankId: bankId,
+      items: s.review.items.map(function (i) {
+        var sel = Array.isArray(i.selected) ? i.selected : [];
+        return { id: i.id, selected: sel, answered: sel.length > 0, correct: !!i.correct, flagged: !!i.flagged };
+      }),
+      byTopic: s.review.byTopic || null,
+      predicted: typeof s.predicted === 'number' ? s.predicted : null,
+      correct: s.firstAttemptCorrect,
+      total: s.size,
+      scorePercent: s.scorePercent,
+      passMarkPercent: s.passMarkPercent,
+      passed: !!s.passed,
+      timeUsedSec: s.timeUsedSec || 0,
+      endedAt: s.endedAt,
+      saved: true,
+      notice: null,
+      filter: 'all'
+    };
+  }
+
+  // Score per topic, weakest first. null when no question in the exam has a topic.
+  // Each row: { topic, total, correct, scorePercent, weight (blueprint %, or null) }.
+  function topicBreakdown(items, qmap, topicWeights) {
+    if (!items.some(function (i) { return qmap[i.id] && qmap[i.id].topic; })) return null;
+    var rows = Object.create(null); // keyed by topic: no built-in names
+    items.forEach(function (i) {
+      var q = qmap[i.id];
+      var t = (q && q.topic) || 'Unlabeled';
+      var r = rows[t] || (rows[t] = { topic: t, total: 0, correct: 0 });
+      r.total++;
+      if (i.correct) r.correct++;
+    });
+    return Object.keys(rows).map(function (t) {
+      var r = rows[t];
+      r.scorePercent = W.pct(r.correct, r.total);
+      r.weight = topicWeights && Object.prototype.hasOwnProperty.call(topicWeights, t) && typeof topicWeights[t] === 'number'
+        ? Math.round(topicWeights[t]) : null;
+      return r;
+    }).sort(function (a, b) { return a.scorePercent - b.scorePercent || b.total - a.total || (a.topic < b.topic ? -1 : 1); });
   }
 
   /* ---------- starting ---------- */
@@ -74,10 +135,15 @@
     var bank = SET.storage.getBank(bankId);
     if (!bank) return;
     SET.ui.ensureNoActive(function () {
+      var entry = SET.storage.getEntry(bankId);
       var session = createSession(bank, {
         count: opts.count, timeLimitMinutes: opts.timeLimitMinutes, passMarkPercent: opts.passMarkPercent,
-        shuffle: SET.storage.getSettings().shuffleOptions
+        shuffle: SET.storage.getSettings().shuffleOptions,
+        maxIntervalDays: W.daysUntil(entry && entry.examDate)
       });
+      // The uncalibrated estimate for these exact questions, compared with the result to calibrate readiness.
+      var qmap = SET.bank.byId(bank);
+      session.predicted = W.expectedScore(session.ids.map(function (id) { return qmap[id]; }), SET.storage.getProgress(bankId));
       lastResult = null;
       SET.storage.setActive(session);
       SET.ui.go('#/bank/' + encodeURIComponent(bankId) + '/exam', true);
@@ -117,7 +183,7 @@
     }
     if (lastResult && lastResult.bankId === bankId) {
       state = { session: null, bank: bank, qmap: qmap, main: main };
-      drawResults();
+      drawResults(lastResult);
       return;
     }
     SET.ui.go('#/bank/' + encodeURIComponent(bankId), true);
@@ -277,13 +343,27 @@
     state.session = null;
     SET.ui.setTimer(null);
     SET.ui.closeDialogs();
-    drawResults();
+    drawResults(lastResult);
     SET.ui.focusHeading();
   }
 
-  function drawResults() {
+  // Opens a past exam's results from session history (#/bank/:id/result/:sessionId).
+  function renderSaved(main, bankId, sessionId) {
+    var bank = SET.storage.getBank(bankId);
+    if (!bank) { SET.ui.go('#/'); return; }
+    var summary = SET.storage.getSessions(bankId).filter(function (s) { return s.id === sessionId; })[0];
+    var r = resultFromSummary(bankId, summary);
+    var active = SET.storage.getActive();
+    if (!r || (active && active.type === 'exam' && active.bankId === bankId)) {
+      SET.ui.go('#/bank/' + encodeURIComponent(bankId) + '/stats', true);
+      return;
+    }
+    state = { session: null, bank: bank, qmap: SET.bank.byId(bank), main: main };
+    drawResults(r);
+  }
+
+  function drawResults(r) {
     var ui = SET.ui, el = ui.el;
-    var r = lastResult;
     var bank = state.bank;
     ui.clear(state.main);
 
@@ -305,6 +385,7 @@
         if (!q || !f.test(item)) return;
         shown++;
         list.appendChild(ui.reviewItem(q, item.selected, {
+          verify: { bankId: bank.id, q: q },
           number: i + 1,
           status: item.correct ? 'correct' : item.answered ? 'wrong' : 'unanswered',
           flagged: item.flagged
@@ -314,16 +395,47 @@
     }
 
     var tabs = ui.segmented('Review filter', filters.map(function (f) {
-      var n = r.items.filter(f.test).length;
+      var n = r.items.filter(function (i) { return state.qmap[i.id] && f.test(i); }).length;
       return { value: f.key, label: f.label + ' (' + n + ')' };
     }), r.filter, function (v) { r.filter = v; fill(); });
 
     fill();
 
+    var topicCard = null;
+    if (r.byTopic) {
+      var showWeight = r.byTopic.some(function (t) { return t.weight !== null; });
+      topicCard = el('section', { class: 'card' },
+        el('div', { class: 'card-head' }, el('h2', null, 'Score by topic'),
+          el('p', { class: 'muted small' }, 'Weakest first. Topics under the ' + r.passMarkPercent + '% pass mark are marked.')),
+        el('div', { class: 'table-wrap' },
+          el('table', { class: 'table' },
+            el('thead', null, el('tr', null,
+              el('th', { scope: 'col' }, 'Topic'),
+              showWeight ? el('th', { scope: 'col', class: 'num' }, 'Exam weight') : null,
+              el('th', { scope: 'col', class: 'num' }, 'Correct'),
+              el('th', { scope: 'col', class: 'num' }, 'Score'),
+              el('th', { scope: 'col' }, 'Result'))),
+            el('tbody', null, r.byTopic.map(function (t) {
+              var ok = t.scorePercent >= r.passMarkPercent;
+              return el('tr', null,
+                el('td', null, t.topic),
+                showWeight ? el('td', { class: 'num' }, t.weight === null ? '—' : t.weight + '%') : null,
+                el('td', { class: 'num' }, t.correct + ' / ' + t.total),
+                el('td', { class: 'num' }, t.scorePercent + '%'),
+                el('td', null, el('span', { class: 'result-tag ' + (ok ? 'is-pass' : 'is-fail') }, ok ? '✓ At or above' : '✕ Below')));
+            })))));
+    }
+
+    var missing = r.items.filter(function (i) { return !state.qmap[i.id]; }).length;
+    var bankHash = '#/bank/' + encodeURIComponent(bank.id);
+
     state.main.appendChild(el('section', { class: 'screen' },
-      el('p', { class: 'eyebrow' }, bank.title + ' · Exam'),
+      r.saved ? el('a', { class: 'back-link', href: bankHash + '/stats' }, '← Stats') : null,
+      el('p', { class: 'eyebrow' }, bank.title + ' · Exam' + (r.saved ? ' on ' + ui.date(r.endedAt) : '')),
       el('h1', { tabindex: '-1' }, 'Exam results'),
       r.notice ? ui.callout(r.notice, 'warn') : null,
+      r.saved ? el('p', { class: 'muted small' }, 'Questions are shown as they are now, including any edits made since this exam.' +
+        (missing ? ' ' + ui.plural(missing, 'question has', 'questions have') + ' since been deleted.' : '')) : null,
       el('div', { class: 'card result-hero' },
         ui.scoreRing(r.scorePercent, r.passed ? 'ok' : 'bad', 'score'),
         el('div', { class: 'result-hero__body' },
@@ -333,15 +445,17 @@
           el('dl', { class: 'facts' },
             ui.fact('Correct', r.correct + ' / ' + r.total),
             ui.fact('Pass mark', r.passMarkPercent + '%'),
-            ui.fact('Time used', ui.clock(r.timeUsedSec))
+            ui.fact('Time used', ui.clock(r.timeUsedSec)),
+            typeof r.predicted === 'number' ? ui.fact('Predicted beforehand', Math.round(r.predicted) + '%') : null
           )
         )
       ),
+      topicCard,
       el('div', { class: 'actions actions--wrap' },
         wrongIds.length ? el('button', { class: 'btn btn-primary', type: 'button', onclick: function () {
           SET.practice.start(bank.id, { ids: wrongIds });
         } }, 'Practise the ones I got wrong (' + wrongIds.length + ')') : null,
-        el('a', { class: 'btn' + (wrongIds.length ? '' : ' btn-primary'), href: '#/bank/' + encodeURIComponent(bank.id) }, 'Back to bank')
+        el('a', { class: 'btn' + (wrongIds.length ? '' : ' btn-primary'), href: r.saved ? bankHash + '/stats' : bankHash }, r.saved ? 'Back to stats' : 'Back to bank')
       ),
       el('section', { class: 'card' },
         el('div', { class: 'card-head' }, el('h2', null, 'Review'), tabs),
@@ -353,7 +467,10 @@
   SET.exam = {
     createSession: createSession,
     grade: grade,
+    topicBreakdown: topicBreakdown,
+    resultFromSummary: resultFromSummary,
     start: start,
-    render: render
+    render: render,
+    renderSaved: renderSaved
   };
 })();

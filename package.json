@@ -1,0 +1,11 @@
+{
+  "name": "servicenow-exam-training",
+  "private": true,
+  "description": "Test tooling only. The app is static files with no build step.",
+  "scripts": {
+    "test": "node scripts/run-tests.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}

@@ -17,6 +17,8 @@
       bankId: bank.id,
       startedAt: new Date().toISOString(),
       focus: typeof opts.focus === 'number' ? opts.focus : null,
+      topics: opts.topics && opts.topics.length ? opts.topics.slice() : null,
+      maxIntervalDays: typeof opts.maxIntervalDays === 'number' ? opts.maxIntervalDays : null,
       size: ids.length,
       notice: opts.notice || null,
       round: 1,
@@ -36,15 +38,28 @@
   }
 
   // Records an answer. Only round 1 updates progress (retry rounds are not counted).
+  // A wrong answer is recorded straight away as Again; a right one waits for applyRating.
   function applyAnswer(session, progress, q, selected, when) {
     var correct = W.isCorrect(selected, q.answer);
     session.roundAnswers[q.id] = { selected: selected.slice(), correct: correct };
     if (correct) session.solved[q.id] = true;
     if (session.round === 1) {
       session.firstResults[q.id] = correct;
-      progress[q.id] = W.record(W.get(progress, q.id), correct, when);
+      if (!correct) progress[q.id] = W.record(W.get(progress, q.id), 1, when, session.maxIntervalDays);
     }
     return correct;
+  }
+
+  // True when a just-answered question still needs a Hard / Good / Easy rating.
+  function needsRating(session, q) {
+    var a = session.roundAnswers[q.id];
+    return session.round === 1 && !!a && a.correct;
+  }
+
+  // grade: 2 = Hard, 3 = Good, 4 = Easy.
+  function applyRating(session, progress, q, grade, when) {
+    if (!needsRating(session, q)) return;
+    progress[q.id] = W.record(W.get(progress, q.id), grade, when, session.maxIntervalDays);
   }
 
   function finishRound(session) {
@@ -81,23 +96,36 @@
 
   /* ---------- starting ---------- */
 
-  // opts: { size, focus } for a weighted test, or { ids } for a fixed list.
+  // Questions in the chosen topics (null or [] = all). Untopiced questions are "Unlabeled".
+  function topicPool(questions, topics) {
+    if (!topics || !topics.length) return questions;
+    return questions.filter(function (q) { return topics.indexOf(q.topic || 'Unlabeled') >= 0; });
+  }
+
+  // opts: { size, focus, topics } for a weighted test, or { ids } for a fixed list.
   function start(bankId, opts) {
     var bank = SET.storage.getBank(bankId);
     if (!bank) return;
     SET.ui.ensureNoActive(function () {
       var progress = SET.storage.getProgress(bankId);
-      var ids, notice = null, focus = null;
+      var entry = SET.storage.getEntry(bankId);
+      var ids, notice = null, focus = null, topics = null;
       if (opts.ids) {
         ids = W.shuffle(opts.ids);
       } else {
         focus = typeof opts.focus === 'number' ? opts.focus : SET.storage.getSettings().focus;
-        var pick = W.selectPractice(bank.questions, progress, opts.size, focus);
+        topics = opts.topics && opts.topics.length ? opts.topics : null;
+        var pool = topicPool(bank.questions, topics);
+        if (topics && !pool.length) { topics = null; pool = bank.questions; } // topics renamed or removed since
+        var pick = W.selectPractice(pool, progress, opts.size, focus);
         ids = pick.ids;
         notice = pick.notice;
       }
       if (!ids.length) return;
-      var session = createSession(bank, ids, progress, { focus: focus, notice: notice });
+      var session = createSession(bank, ids, progress, {
+        focus: focus, notice: notice, topics: topics,
+        maxIntervalDays: W.daysUntil(entry && entry.examDate)
+      });
       SET.storage.setActive(session);
       SET.ui.go('#/bank/' + encodeURIComponent(bankId) + '/practice', true);
     });
@@ -106,6 +134,14 @@
   /* ---------- rendering ---------- */
 
   function save() { SET.storage.setActive(state.session); }
+
+  // Re-reads stored progress, applies one change, saves. Another tab (or the editor) may have saved
+  // progress since this page loaded; writing back an old in-memory copy would undo their answers.
+  function updateProgress(change) {
+    state.progress = SET.storage.getProgress(state.bank.id);
+    change(state.progress);
+    SET.storage.saveProgress(state.bank.id, state.progress, true);
+  }
 
   function render(main, bankId) {
     var bank = SET.storage.getBank(bankId);
@@ -118,8 +154,17 @@
     var qmap = SET.bank.byId(bank);
     // The bank may have been updated since the session was saved.
     var exists = function (id) { return !!qmap[id]; };
+    var current = session.queue[session.index];
+    var before = session.queue.slice(0, session.index).filter(exists).length;
     session.queue = session.queue.filter(exists);
     session.testIds = session.testIds.filter(exists);
+    if (session.phase !== 'results') {
+      if (current && exists(current)) session.index = session.queue.indexOf(current);
+      else {
+        session.index = before;
+        if (session.phase !== 'question') { session.phase = 'question'; session.selected = []; session.order = null; }
+      }
+    }
     if (session.phase !== 'results' && session.index >= session.queue.length) {
       if (session.round === 1 && !Object.keys(session.roundAnswers).some(exists)) {
         SET.storage.clearActive();
@@ -150,7 +195,8 @@
       save();
     }
     var need = q.answer.length;
-    var locked = s.phase === 'feedback';
+    var rating = s.phase === 'rate';
+    var locked = s.phase === 'feedback' || rating;
     var isLast = s.index === s.queue.length - 1;
     var given = s.roundAnswers[q.id];
     var selected = locked && given ? given.selected : s.selected;
@@ -180,7 +226,18 @@
       feedback.appendChild(el('span', { class: 'feedback__icon', 'aria-hidden': 'true' }, given.correct ? '✓' : '✕'));
       feedback.appendChild(el('span', null, given.correct ? 'Correct!' : 'Incorrect — the answer is ' + letters));
       if (q.explanation) after.appendChild(ui.explanation(q.explanation));
-      if (q.unverified) after.appendChild(ui.unverifiedNote());
+      if (q.unverified) after.appendChild(ui.unverifiedNote({ bankId: state.bank.id, q: q }));
+      after.appendChild(el('p', { class: 'small' }, el('button', { class: 'link', type: 'button', onclick: function () {
+        SET.editor.open(state.bank.id, q.id).then(function (done) {
+          if (!done) return;
+          state.bank = SET.storage.getBank(state.bank.id);
+          state.qmap = SET.bank.byId(state.bank);
+          state.progress = SET.storage.getProgress(state.bank.id); // the editor may have reset or removed this question
+          if (done === 'deleted' && !dropCurrent(q.id)) return;
+          if (done === 'reset') askAgain(q.id);
+          draw();
+        });
+      } }, 'Spotted a mistake? Edit this question')));
     }
 
     submitBtn = el('button', {
@@ -189,6 +246,21 @@
     }, 'Submit answer');
     nextBtn = el('button', { class: 'btn btn-primary', type: 'button', onclick: next },
       isLast ? 'See results' : 'Next question');
+
+    // A right first-round answer is rated instead of a plain Next; the rating drives the review schedule.
+    var goodBtn = null, rateRow = null;
+    if (rating) {
+      var rateBtn = function (grade, label, hint, cls) {
+        return el('button', { class: 'btn' + (cls ? ' ' + cls : ''), type: 'button', title: hint,
+          onclick: function () { rate(q, grade); } }, label);
+      };
+      goodBtn = rateBtn(3, 'Good', 'Recalled it with some thought', 'btn-primary');
+      rateRow = el('div', { class: 'actions actions--wrap', role: 'group', 'aria-label': 'How easy was that to recall?' },
+        el('span', { class: 'muted small' }, 'How easy was that?'),
+        rateBtn(2, 'Hard', 'Got there, but it was a struggle'),
+        goodBtn,
+        rateBtn(4, 'Easy', 'Knew it instantly'));
+    }
 
     var roundLabel = s.round === 1 ? 'First attempt' : 'Retry round ' + (s.round - 1);
     var done = s.index + (locked ? 1 : 0);
@@ -211,20 +283,64 @@
         options.node,
         feedback,
         after,
-        el('div', { class: 'actions' }, locked ? nextBtn : submitBtn)
+        rating ? rateRow : el('div', { class: 'actions' }, locked ? nextBtn : submitBtn)
       )
     ));
-    if (locked) nextBtn.focus();
+    if (rating) goodBtn.focus();
+    else if (locked) nextBtn.focus();
   }
 
   function submit(q) {
     var s = state.session;
     if (s.phase !== 'question' || s.selected.length !== q.answer.length) return;
-    applyAnswer(s, state.progress, q, s.selected, new Date().toISOString());
-    if (s.round === 1) SET.storage.saveProgress(state.bank.id, state.progress, true);
-    s.phase = 'feedback';
+    var when = new Date().toISOString();
+    if (s.round === 1) updateProgress(function (progress) { applyAnswer(s, progress, q, s.selected, when); });
+    else applyAnswer(s, state.progress, q, s.selected, when);
+    s.phase = needsRating(s, q) ? 'rate' : 'feedback';
     save();
     draw();
+  }
+
+  // The question on screen was deleted: drop it from the test and carry on with the next one.
+  // Returns false when nothing is left and the user was sent back to the bank.
+  function dropCurrent(id) {
+    var s = state.session;
+    s.queue = s.queue.filter(function (x) { return x !== id; });
+    s.testIds = s.testIds.filter(function (x) { return x !== id; });
+    delete s.roundAnswers[id];
+    delete s.firstResults[id];
+    delete s.solved[id];
+    s.selected = [];
+    s.order = null;
+    if (!s.queue.length && !s.testIds.length && s.round === 1 && !Object.keys(s.roundAnswers).length) {
+      SET.storage.clearActive();
+      SET.ui.go('#/bank/' + encodeURIComponent(s.bankId));
+      return false;
+    }
+    if (s.index >= s.queue.length) completeRound();
+    else s.phase = 'question';
+    save();
+    return true;
+  }
+
+  // The answer to the question on screen was corrected: forget this round's answer and ask it again.
+  function askAgain(id) {
+    var s = state.session;
+    delete s.roundAnswers[id];
+    delete s.firstResults[id];
+    delete s.solved[id];
+    s.phase = 'question';
+    s.selected = [];
+    s.order = null;
+    save();
+  }
+
+  function rate(q, grade) {
+    var s = state.session;
+    if (s.phase !== 'rate') return;
+    var when = new Date().toISOString();
+    updateProgress(function (progress) { applyRating(s, progress, q, grade, when); });
+    next();
   }
 
   function next() {
@@ -259,6 +375,10 @@
     var s = state.session;
     SET.ui.confirm('End this test?', 'Only the questions you have answered will count.', 'End test').then(function (ok) {
       if (!ok) return;
+      if (s.phase === 'rate') { // answered right but not rated yet: count it as Good
+        var when = new Date().toISOString();
+        updateProgress(function (progress) { applyRating(s, progress, state.qmap[s.queue[s.index]], 3, when); });
+      }
       var answeredAny = Object.keys(s.roundAnswers).length > 0;
       if (s.round === 1 && !answeredAny) {
         SET.storage.clearActive();
@@ -304,7 +424,7 @@
         el('summary', null, 'Questions missed this round (' + missed.length + ')'),
         el('ol', { class: 'review-list' }, missed.map(function (id) {
           var q = state.qmap[id];
-          return ui.reviewItem(q, s.roundAnswers[id].selected, { status: 'wrong' });
+          return ui.reviewItem(q, s.roundAnswers[id].selected, { status: 'wrong', verify: { bankId: bank.id, q: q } });
         }))
       );
     }
@@ -334,7 +454,7 @@
         el('button', { class: 'btn' + (unsolved ? '' : ' btn-primary'), type: 'button', onclick: function () {
           var size = Math.min(s.size || total, bank.questions.length);
           SET.storage.clearActive();
-          start(bank.id, { size: size, focus: s.focus !== null ? s.focus : SET.storage.getSettings().focus });
+          start(bank.id, { size: size, focus: s.focus !== null ? s.focus : SET.storage.getSettings().focus, topics: s.topics });
         } }, 'New test'),
         el('button', { class: 'btn btn-ghost', type: 'button', onclick: function () {
           SET.storage.clearActive();
@@ -347,6 +467,9 @@
   SET.practice = {
     createSession: createSession,
     applyAnswer: applyAnswer,
+    needsRating: needsRating,
+    applyRating: applyRating,
+    topicPool: topicPool,
     finishRound: finishRound,
     startRetry: startRetry,
     firstAttemptCorrect: firstAttemptCorrect,

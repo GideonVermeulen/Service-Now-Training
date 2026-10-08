@@ -13,6 +13,13 @@
 
   var has = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
 
+  // A lookup table with no built-in properties, so keys like "constructor" or "__proto__" are just keys.
+  function table() { return Object.create(null); }
+
+  // Names every JavaScript object already has (toString, constructor, __proto__...). As a topic or id
+  // they would collide with built-in behaviour, so uploads and the editor reject them.
+  function reservedName(s) { return s === '__proto__' || s === 'prototype' || s in Object.prototype; }
+
   // FNV-1a 32-bit over the UTF-8 bytes of the string, as 8 hex digits.
   function fnv1a(str) {
     var bytes = unescape(encodeURIComponent(str));
@@ -86,12 +93,45 @@
       passMarkPercent: function (v) { return v >= 0 && v <= 100; }
     };
     Object.keys(raw).forEach(function (k) {
+      if (k === 'topicWeights') { readTopicWeights(raw[k], exam, warnings); return; }
       if (!has(rules, k)) { warnings.push('Unknown exam setting "' + k + '" was ignored.'); return; }
       var v = raw[k];
       if (typeof v === 'number' && isFinite(v) && rules[k](v)) exam[k] = v;
       else warnings.push('Exam setting "' + k + '" is not valid, so the default (' + DEFAULT_EXAM[k] + ') is used.');
     });
     return exam;
+  }
+
+  // exam.topicWeights: { topic: percent }. Problems are warnings; the result is normalised to sum to 100.
+  function readTopicWeights(raw, exam, warnings) {
+    if (raw === undefined || raw === null) return;
+    if (typeof raw !== 'object' || Array.isArray(raw)) {
+      warnings.push('"exam.topicWeights" is not an object, so each topic\'s share of the bank is used.');
+      return;
+    }
+    var out = table(), sum = 0;
+    Object.keys(raw).forEach(function (t) {
+      var v = raw[t];
+      if (reservedName(t)) {
+        warnings.push('"exam.topicWeights" uses the reserved name "' + t + '", so it was ignored.');
+        return;
+      }
+      if (typeof v !== 'number' || !isFinite(v) || v < 0 || v > 100) {
+        warnings.push('"exam.topicWeights" value for "' + t + '" must be a number from 0 to 100, so it was ignored.');
+        return;
+      }
+      out[t] = v;
+      sum += v;
+    });
+    if (!sum) {
+      warnings.push('"exam.topicWeights" has no usable values, so each topic\'s share of the bank is used.');
+      return;
+    }
+    if (Math.abs(sum - 100) > 1) {
+      warnings.push('"exam.topicWeights" values sum to ' + Math.round(sum * 100) / 100 + ', not 100 — normalised automatically.');
+    }
+    Object.keys(out).forEach(function (t) { out[t] = out[t] * 100 / sum; });
+    exam.topicWeights = out;
   }
 
   // Validates and normalises parsed JSON. Returns { ok, bank, errors, warnings }.
@@ -128,9 +168,9 @@
     var exam = readExam(top.exam, warnings);
 
     var questions = [];
-    var idSeen = {};        // id -> position
-    var textSeen = {};      // normalised text -> position
-    var unknownQ = {};      // field -> count
+    var idSeen = table();   // id -> position
+    var textSeen = table(); // normalised text -> position
+    var unknownQ = table(); // field -> count
 
     items.forEach(function (item, i) {
       var pos = i + 1;
@@ -150,6 +190,7 @@
         if (typeof q.id === 'number' && isFinite(q.id)) id = String(q.id);
         else if (typeof q.id === 'string' && q.id.trim()) id = q.id.trim();
         else errors.push('Question ' + pos + ': id must be non-empty text.');
+        if (id && reservedName(id)) { errors.push('Question ' + pos + ': id "' + id + '" is a reserved name. Use a different id.'); id = null; }
       }
       var where = 'Question ' + pos + (id ? ' (id ' + id + ')' : '');
 
@@ -174,7 +215,7 @@
         });
         if (!optOk) options = null;
         else {
-          var seenOpt = {};
+          var seenOpt = table();
           options.forEach(function (o, oi) {
             var key = normText(o);
             if (has(seenOpt, key)) warnings.push(where + ': options ' + letter(seenOpt[key]) + ' and ' + letter(oi) + ' have the same text.');
@@ -191,6 +232,9 @@
         if (typeof q[k] !== 'string') { errors.push(where + ': ' + k + ' must be text.'); return; }
         if (q[k].trim()) out[k] = q[k].trim();
       });
+      if (out.topic && reservedName(out.topic)) {
+        errors.push(where + ': topic "' + out.topic + '" is a reserved name. Use a different topic name.');
+      }
       if (has(q, 'unverified') && q.unverified !== null) {
         if (typeof q.unverified !== 'boolean') errors.push(where + ': unverified must be true or false.');
         else if (q.unverified) out.unverified = true;
@@ -227,7 +271,20 @@
 
     if (errors.length) return { ok: false, bank: null, errors: errors, warnings: warnings };
 
-    exam.questionCount = Math.min(exam.questionCount, questions.length);
+    var anyTopic = questions.some(function (q) { return q.topic; });
+    if (exam.topicWeights) {
+      var topicSeen = {};
+      questions.forEach(function (q) { topicSeen[q.topic || 'Unlabeled'] = true; });
+      Object.keys(exam.topicWeights).forEach(function (t) {
+        if (!has(topicSeen, t)) warnings.push('"exam.topicWeights" names topic "' + t + '", but no question has that topic.');
+      });
+    } else if (!(top.exam && typeof top.exam === 'object' && has(top.exam, 'topicWeights'))) {
+      // Missing weights are fine, but say what mock exams will do instead. (Unusable weights already warned above.)
+      warnings.push(anyTopic
+        ? 'No "exam.topicWeights" in this bank, so mock exams follow the bank\'s own topic mix, not the real exam\'s blueprint.'
+        : 'No topics or "exam.topicWeights" in this bank, so mock exams draw questions at random and Practice has no topic filter.');
+    }
+
     return {
       ok: true,
       errors: errors,
@@ -254,26 +311,43 @@
       unverified + ' unverified, ' + warningCount + (warningCount === 1 ? ' warning' : ' warnings');
   }
 
-  // Merges progress when a bank's questions are replaced.
+  // True when a question's right answer is now different text, so old progress no longer applies.
+  // Reordering options, adding a distractor or fixing a typo is not a change; making a former
+  // wrong option the answer (even at the same letter) is.
+  function answerChanged(before, after) {
+    function texts(q, right) {
+      return q.options.filter(function (o, i) { return (q.answer.indexOf(i) >= 0) === right; }).map(normText).sort();
+    }
+    var oldRight = texts(before, true), newRight = texts(after, true), oldWrong = texts(before, false);
+    if (JSON.stringify(oldRight) === JSON.stringify(newRight)) return false;
+    var sameLetters = JSON.stringify(before.answer.slice().sort()) === JSON.stringify(after.answer.slice().sort());
+    return !sameLetters || newRight.some(function (t) { return oldWrong.indexOf(t) >= 0; });
+  }
+
+  // Merges progress when a bank's questions are replaced. Progress is dropped for questions
+  // whose right answer changed.
   function mergeUpdate(oldBank, newBank, oldProgress) {
-    var oldIds = {};
-    (oldBank ? oldBank.questions : []).forEach(function (q) { oldIds[q.id] = true; });
+    var oldQs = {};
+    (oldBank ? oldBank.questions : []).forEach(function (q) { oldQs[q.id] = q; });
     var newIds = {};
     var progress = {};
-    var kept = 0, added = 0;
+    var kept = 0, added = 0, reset = 0;
     newBank.questions.forEach(function (q) {
       newIds[q.id] = true;
-      if (has(oldIds, q.id)) {
+      if (has(oldQs, q.id)) {
         kept++;
-        if (oldProgress && has(oldProgress, q.id)) progress[q.id] = oldProgress[q.id];
+        if (oldProgress && has(oldProgress, q.id)) {
+          if (answerChanged(oldQs[q.id], q)) reset++;
+          else progress[q.id] = oldProgress[q.id];
+        }
       } else added++;
     });
-    var removed = Object.keys(oldIds).filter(function (id) { return !has(newIds, id); }).length;
-    return { progress: progress, kept: kept, added: added, removed: removed };
+    var removed = Object.keys(oldQs).filter(function (id) { return !has(newIds, id); }).length;
+    return { progress: progress, kept: kept, added: added, removed: removed, reset: reset };
   }
 
   function byId(bank) {
-    var map = {};
+    var map = table();
     bank.questions.forEach(function (q) { map[q.id] = q; });
     return map;
   }
@@ -289,6 +363,9 @@
     parse: parse,
     normalise: normalise,
     summaryText: summaryText,
+    answerChanged: answerChanged,
+    reservedName: reservedName,
+    table: table,
     mergeUpdate: mergeUpdate,
     byId: byId
   };

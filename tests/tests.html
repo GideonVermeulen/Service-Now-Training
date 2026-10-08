@@ -27,9 +27,12 @@
 
 <script src="../js/storage.js"></script>
 <script src="../js/bank.js"></script>
+<script src="../js/fsrs.js"></script>
 <script src="../js/weighting.js"></script>
 <script src="../js/practice.js"></script>
 <script src="../js/exam.js"></script>
+<script src="../js/stats.js"></script>
+<script src="../js/editor.js"></script>
 <script src="tprm-data.js"></script>
 <script>
 (function () {
@@ -85,9 +88,20 @@
       return ((t ^ t >>> 14) >>> 0) / 4294967296;
     };
   }
+  // Old-shape (pre-FSRS) progress record, as stored by earlier versions.
   function prog(seen, correct, streak, recent, lastCorrect) {
     return { seen: seen, correct: correct, streak: streak, recent: recent, lastSeen: '2026-01-01T00:00:00.000Z', lastCorrect: lastCorrect };
   }
+  var DAY = 86400000;
+  function iso(ms) { return new Date(ms).toISOString(); }
+  // FSRS-shape record. dueIn: days from now (negative = overdue).
+  function fp(stability, lastGrade, dueIn, difficulty) {
+    return { reps: 3, lapses: 0, difficulty: difficulty === undefined ? 5 : difficulty, stability: stability,
+      due: iso(Date.now() + dueIn * DAY), lastReview: iso(Date.now() - DAY), lastGrade: lastGrade,
+      seen: 3, correct: lastGrade === 1 ? 2 : 3, streak: lastGrade === 1 ? 0 : 3 };
+  }
+  var MASTERED = function () { return fp(30, 3, 10, 2); };
+  var WEAK = function () { return fp(2, 1, 1, 7); };
 
   /* 1. Validation */
   group('1. Validation');
@@ -156,9 +170,12 @@
     var r = B.normalise(bank([a, q('b', 1)]), 'x.json');
     eq(B.summaryText(r.bank, 0), "Bank 'T', 2 questions, 1 unverified, 0 warnings");
   });
-  test('exam questionCount is clamped to bank size', function () {
+  test('exam questionCount is kept as written (uses cap it at the bank size)', function () {
     var r = B.normalise(bank([q('a', 0), q('b', 0)]), 'x.json');
-    eq(r.bank.exam.questionCount, 2);
+    eq(r.bank.exam.questionCount, 60, 'default kept, so adding questions later can reach it');
+    r.bank.id = 'qc';
+    var e = E.createSession(r.bank, { count: Math.min(r.bank.exam.questionCount, r.bank.questions.length), timeLimitMinutes: 0, passMarkPercent: 70 }, seeded(1), 1000);
+    eq(e.ids.length, 2);
   });
 
   /* 2. Identity */
@@ -191,19 +208,31 @@
   group('4. Weakness and weight');
   var cases = [
     { name: 'new', p: null, status: 'new', w: 0.75, weights: [1, 3.25, 6.25] },
-    { name: 'mastered', p: prog(5, 4, 3, [false, true, true, true], true), status: 'mastered', w: 0, weights: [1, 1, 1] },
-    { name: 'weak (2/3 recent, last wrong → 0.6 floor)', p: prog(3, 2, 0, [true, true, false], false), status: 'weak', w: 0.6, weights: [1, 2.8, 5.2] },
-    { name: 'weak (all wrong)', p: prog(2, 0, 0, [false, false], false), status: 'weak', w: 1, weights: [1, 4, 8] },
-    { name: 'learning (1/2 recent)', p: prog(2, 1, 1, [false, true], true), status: 'learning', w: 0.5, weights: [1, 2.5, 4.5] },
-    { name: 'learning (last 5 of 7)', p: prog(7, 4, 2, [true, true, false, false, true, true, true], true), status: 'learning', w: 0.4, weights: [1, 2.2, 3.8] },
-    { name: 'mastered then missed → weak', p: W.record(prog(3, 3, 3, [true, true, true], true), false), status: 'weak', w: 0.6, weights: [1, 2.8, 5.2] }
+    { name: 'weak (last grade Again)', p: fp(2, 1, 1, 7), status: 'weak', w: 1, weights: [1, 4, 8] },
+    { name: 'learning, not yet due (D 5 → 0.15)', p: fp(10, 3, 4, 5), status: 'learning', w: 0.15, weights: [1, 1.45, 2.05] },
+    { name: 'mastered, not yet due (D 2 → 0.06)', p: fp(30, 3, 10, 2), status: 'mastered', w: 0.06, weights: [1, 1.18, 1.42] },
+    { name: 'learning, 5 days overdue at S 10 → 0.5', p: fp(10, 3, -5, 5), status: 'learning', w: 0.5, weights: [1, 2.5, 4.5] },
+    { name: 'long overdue is capped at 0.8', p: fp(2, 4, -10, 5), status: 'learning', w: 0.8, weights: [1, 3.4, 6.6] },
+    { name: 'mastered then missed → weak', p: W.record(fp(30, 3, 10, 2), 1), status: 'weak', w: 1, weights: [1, 4, 8] },
+    { name: 'legacy record, last answer wrong → weak', p: prog(3, 2, 0, [true, true, false], false), status: 'weak', w: 1, weights: [1, 4, 8] }
   ];
   cases.forEach(function (c) {
     test(c.name + ': status, w and weight at F = 1, 4, 8', function () {
       eq(W.status(c.p), c.status, 'status');
-      near(W.weakness(c.p), c.w, 1e-9, 'w');
-      [1, 4, 8].forEach(function (F, i) { near(W.weight(c.p, F), c.weights[i], 1e-9, 'weight F=' + F); });
+      near(W.weakness(c.p), c.w, 1e-6, 'w');
+      [1, 4, 8].forEach(function (F, i) { near(W.weight(c.p, F), c.weights[i], 1e-5, 'weight F=' + F); });
     });
+  });
+  test('legacy records migrate on read and keep their counters', function () {
+    var old = prog(4, 3, 2, [false, true, true, true], true);
+    var p = W.get({ x: old }, 'x');
+    eq([p.reps, p.lapses, p.difficulty, p.stability, p.lastGrade], [4, 0, 5, 6, 3]);
+    eq([p.seen, p.correct, p.streak], [4, 3, 2]);
+    eq(p.due, iso(Date.parse(old.lastSeen) + 6 * DAY), 'due one interval after last seen'); eq(p.lastReview, old.lastSeen);
+    eq(old.reps, undefined, 'stored record is not modified');
+    var next = W.record(p, 3, '2026-02-01T00:00:00.000Z');
+    eq([next.seen, next.correct, next.streak, next.reps], [5, 4, 3, 5]);
+    assert(next.recent === undefined && next.lastCorrect === undefined, 'new shape only');
   });
 
   /* 5. Sampling */
@@ -232,20 +261,20 @@
   test('Strong focus favours weak questions', function () {
     var qs = ids30.map(function (id) { return { id: id }; });
     var progress = {};
-    ids30.forEach(function (id, i) { progress[id] = i < 5 ? prog(2, 0, 0, [false, false], false) : prog(3, 3, 3, [true, true, true], true); });
+    ids30.forEach(function (id, i) { progress[id] = i < 5 ? WEAK() : MASTERED(); });
     var weakHits = 0;
     for (var t = 0; t < 2000; t++) {
       var pick = W.selectPractice(qs, progress, 5, 2).ids;
       weakHits += pick.filter(function (id) { return Number(id.slice(1)) < 5; }).length;
     }
-    // Weak share of weight: 5*4 / (5*4 + 25*1) = 44% of draws ≫ the 17% uniform share.
+    // Weak share of weight: 5*4 / (5*4 + 25*1.18) = 40% of draws ≫ the 17% uniform share.
     assert(weakHits / (2000 * 5) > 0.3, 'weak share ' + (weakHits / 10000).toFixed(3));
   });
 
   /* 6. Weak only */
   group('6. Weak only');
   var wq = ['m1', 'm2', 'm3', 'x1', 'x2'].map(function (id) { return { id: id }; });
-  var mp = { m1: prog(3, 3, 3, [true, true, true], true), m2: prog(4, 4, 4, [true, true, true, true], true), m3: prog(3, 3, 3, [true, true, true], true), x1: prog(1, 0, 0, [false], false) };
+  var mp = { m1: MASTERED(), m2: MASTERED(), m3: MASTERED(), x1: WEAK() };
   test('pool excludes Mastered', function () {
     for (var t = 0; t < 100; t++) {
       var r = W.selectPractice(wq, mp, 2, 4);
@@ -271,22 +300,38 @@
   var tb = B.normalise(bank([q('a', [1]), q('b', [0, 2]), q('c', [3])]), 'x.json').bank;
   tb.id = 'test-bank';
   var tmap = B.byId(tb);
-  test('round 1 counts; retry rounds do not change progress', function () {
+  var T1 = '2026-03-01T09:00:00.000Z', T2 = '2026-03-01T09:05:00.000Z';
+  test('round 1 counts; wrong is Again at once, right waits for a rating; retries do not change progress', function () {
     var progress = {};
     var s = P.createSession(tb, ['a', 'b', 'c'], progress, { focus: 2 });
-    P.applyAnswer(s, progress, tmap.a, [0], 't1');    // wrong
-    P.applyAnswer(s, progress, tmap.b, [2, 0], 't1'); // right (order-insensitive)
-    P.applyAnswer(s, progress, tmap.c, [3], 't1');    // right
-    eq(progress.a.seen, 1); eq(progress.a.streak, 0); eq(progress.a.lastCorrect, false);
-    eq(progress.b.correct, 1); eq(progress.b.streak, 1);
+    P.applyAnswer(s, progress, tmap.a, [0], T1);    // wrong
+    eq(P.needsRating(s, tmap.a), false, 'wrong answers are not rated');
+    eq(progress.a.seen, 1); eq(progress.a.streak, 0); eq(progress.a.lastGrade, 1);
+    P.applyAnswer(s, progress, tmap.b, [2, 0], T1); // right (order-insensitive)
+    eq(P.needsRating(s, tmap.b), true);
+    assert(!progress.b, 'right answer not recorded before rating');
+    P.applyRating(s, progress, tmap.b, 2, T1);
+    eq(progress.b.correct, 1); eq(progress.b.streak, 1); eq(progress.b.lastGrade, 2);
+    P.applyAnswer(s, progress, tmap.c, [3], T1);    // right
+    P.applyRating(s, progress, tmap.c, 4, T1);
+    eq(progress.c.lastGrade, 4);
     P.finishRound(s);
     eq(P.firstAttemptCorrect(s), 2);
     var before = JSON.stringify(progress);
     P.startRetry(s);
     eq(s.queue, ['a']);
-    P.applyAnswer(s, progress, tmap.a, [1], 't2');
+    P.applyAnswer(s, progress, tmap.a, [1], T2);
+    eq(P.needsRating(s, tmap.a), false, 'retry rounds are not rated');
+    P.applyRating(s, progress, tmap.a, 4, T2);
     eq(JSON.stringify(progress), before, 'progress unchanged in retry');
     assert(s.solved.a, 'retry still marks solved');
+  });
+  test('the exam date cap is carried on the practice session', function () {
+    var progress = {};
+    var s = P.createSession(tb, ['a'], progress, { focus: 2, maxIntervalDays: 2 });
+    P.applyAnswer(s, progress, tmap.a, [1], T1);
+    P.applyRating(s, progress, tmap.a, 4, T1); // Easy on a new card would be ~16 days
+    eq(progress.a.due, iso(Date.parse(T1) + 2 * DAY));
   });
   test('partial multi-answer selection is wrong (all-or-nothing)', function () {
     assert(!W.isCorrect([0], [0, 2]));
@@ -302,18 +347,15 @@
     eq(r.timeUsedSec, 60);
     eq(progress.a.streak, 0, 'streak resets on a miss');
     eq(W.status(progress.a), 'weak');
+    eq(progress.a.lastGrade, 1, 'wrong = Again');
     eq(progress.b.seen, 1);
+    eq(progress.b.lastGrade, 3, 'right = Good');
     assert(!progress.c, 'unanswered not recorded');
   });
-  test('streak resets on a miss and rebuilds to Mastered', function () {
+  test('streak resets on a miss and rebuilds; seen and correct keep counting', function () {
     var p = null;
-    [true, true, false, true, true, true].forEach(function (c) { p = W.record(p, c); });
-    eq(p.streak, 3); eq(p.seen, 6); eq(p.correct, 5); eq(W.status(p), 'mastered');
-  });
-  test('recent keeps the last 10', function () {
-    var p = null;
-    for (var i = 0; i < 15; i++) p = W.record(p, i % 2 === 0);
-    eq(p.recent.length, 10);
+    [3, 3, 1, 3, 2, 4].forEach(function (g) { p = W.record(p, g, T1); });
+    eq(p.streak, 3); eq(p.seen, 6); eq(p.correct, 5); eq(p.reps, 6); eq(p.lapses, 1);
   });
 
   /* 8. Option shuffle */
@@ -334,11 +376,714 @@
 
   /* 9. Real bank */
   group('9. banks/tprm.json');
-  test('validates with 0 errors and 180 questions', function () {
+  // banks/tprm.json is kept out of the repository, so these run only where the local copy exists.
+  function needsTprm(name, fn) {
+    if (window.TPRM_BANK) test(name, fn);
+    else test(name + ' (skipped: tests/tprm-data.js not present)', function () {});
+  }
+  needsTprm('validates with 0 errors and 180 questions', function () {
     var r = B.normalise(JSON.parse(JSON.stringify(window.TPRM_BANK)), 'tprm.json');
     eq(r.errors.length, 0, r.errors.slice(0, 3).join('; '));
     eq(r.bank.questions.length, 180);
     eq(r.bank.title, 'ServiceNow CIS-TPRM practice');
+  });
+
+  /* 10. FSRS state update
+     Expected values come from the reference ts-fsrs 4.x (FSRS-5, same default weights),
+     not from this implementation, so a transcription error in a formula fails here. */
+  group('10. FSRS state update');
+  var F = SET.fsrs;
+  var NOW = Date.parse('2026-06-01T12:00:00.000Z');
+  test('first review: stability and difficulty from the grade alone', function () {
+    var expect = { 1: [0.40255, 7.1949, 1], 2: [1.18385, 6.48830527, 1], 3: [3.173, 5.28243442, 3], 4: [15.69105, 3.22450159, 16] };
+    [1, 2, 3, 4].forEach(function (g) {
+      var n = F.next(null, g, NOW, null);
+      near(n.stability, expect[g][0], 1e-6, 'S grade ' + g);
+      near(n.difficulty, expect[g][1], 1e-6, 'D grade ' + g);
+      eq(n.reps, 1); eq(n.lapses, 0);
+      eq(n.due, iso(NOW + expect[g][2] * DAY), 'due grade ' + g);
+      eq(n.lastReview, iso(NOW));
+    });
+  });
+  var existing = { difficulty: 5, stability: 10, reps: 3, lapses: 0, lastReview: iso(NOW - 10 * DAY) };
+  test('retrievability is 0.9 after S days', function () { near(F.retrievability(10, 10), 0.9, 1e-12); near(F.interval(10), 10, 1e-9); });
+  test('success on an existing card (D 5, S 10, 10 days elapsed)', function () {
+    var expect = { 2: [15.31391211, 5.7994339], 3: [32.95426399, 4.99183271], 4: [78.62865848, 4.18423151] };
+    [2, 3, 4].forEach(function (g) {
+      var n = F.next(existing, g, NOW, null);
+      near(n.stability, expect[g][0], 1e-6, 'S grade ' + g);
+      near(n.difficulty, expect[g][1], 1e-6, 'D grade ' + g);
+      eq(n.reps, 4); eq(n.lapses, 0);
+    });
+    eq(F.next(existing, 3, NOW, null).due, iso(NOW + 33 * DAY));
+  });
+  test('lapse on an existing card', function () {
+    var n = F.next(existing, 1, NOW, null);
+    near(n.stability, 2.10769626, 1e-6, 'S');
+    near(n.difficulty, 6.60703511, 1e-6, 'D');
+    eq(n.lapses, 1); eq(n.reps, 4);
+    eq(n.due, iso(NOW + 2 * DAY));
+  });
+  test('a same-day right answer leaves the memory state and schedule unchanged', function () {
+    var sameDay = { difficulty: 5, stability: 10, reps: 3, lapses: 0, lastReview: iso(NOW - 3600000), due: iso(NOW + 9 * DAY) };
+    [2, 3, 4].forEach(function (g) {
+      var n = F.next(sameDay, g, NOW, null);
+      eq([n.stability, n.difficulty, n.due, n.lastReview, n.counted], [10, 5, sameDay.due, sameDay.lastReview, false], 'grade ' + g);
+      eq(n.reps, 4);
+    });
+  });
+  test('a same-day wrong answer still counts and lowers stability (FSRS-5 short-term)', function () {
+    var sameDay = { difficulty: 5, stability: 10, reps: 3, lapses: 0, lastReview: iso(NOW - 3600000), due: iso(NOW + 9 * DAY) };
+    var n = F.next(sameDay, 1, NOW, null);
+    near(n.stability, 5.01028524, 1e-6, 'Again');
+    near(n.difficulty, 6.60703511, 1e-6, 'D');
+    eq(n.lapses, 1); eq(n.lastReview, iso(NOW)); eq(n.counted, true);
+  });
+  test('a review the next calendar morning counts, even under 24 hours later', function () {
+    var night = new Date(2026, 5, 1, 23, 0).getTime(), morning = new Date(2026, 5, 2, 7, 0).getTime();
+    var s = F.next(null, 3, night, null);
+    var n = F.next(s, 3, morning, null);
+    eq(n.counted, true);
+    assert(n.stability > s.stability, 'stability grew: ' + s.stability + ' → ' + n.stability);
+  });
+  test('cramming one day cannot reach Mastered; spacing over days can', function () {
+    var p = null, t = new Date(2026, 5, 1, 8, 0).getTime();
+    for (var i = 0; i < 8; i++) p = W.record(p, i < 2 ? 4 : 3, iso(t + i * 3600000));
+    eq(W.status(p), 'learning', '8 right answers in one day');
+    near(p.stability, F.initStability(4), 1e-9, 'only the first answer of the day counted');
+    eq(p.seen, 8); eq(p.correct, 8); eq(p.streak, 8);
+    eq(p.lastReview, iso(t), 'schedule anchored to the counted review');
+    p = W.record(p, 3, p.due);
+    eq(W.status(p), 'mastered', 'next spaced review');
+  });
+  test('difficulty stays within 1–10', function () {
+    var s = null;
+    for (var i = 0; i < 30; i++) { s = F.next(s, 1, NOW + i * DAY, null); assert(s.difficulty >= 1 && s.difficulty <= 10, 'D ' + s.difficulty); }
+    for (var j = 0; j < 30; j++) { s = F.next(s, 4, NOW + (30 + j) * DAY, null); assert(s.difficulty >= 1 && s.difficulty <= 10, 'D ' + s.difficulty); }
+  });
+
+  /* 11. Interval cap */
+  group('11. Interval cap');
+  test('maxIntervalDays caps a long interval', function () {
+    var big = { difficulty: 3, stability: 50, reps: 5, lapses: 0, lastReview: iso(NOW - 50 * DAY) };
+    var uncapped = F.next(big, 4, NOW, null);
+    assert(Date.parse(uncapped.due) - NOW > 100 * DAY, 'raw interval is long');
+    var capped = F.next(big, 4, NOW, 5);
+    eq(capped.due, iso(NOW + 5 * DAY));
+    near(capped.stability, uncapped.stability, 1e-12, 'cap changes the due date only');
+  });
+  test('no cap (null or undefined) leaves the interval alone', function () {
+    var n1 = F.next(existing, 3, NOW, null), n2 = F.next(existing, 3, NOW);
+    eq(n1.due, iso(NOW + Math.round(n1.stability) * DAY));
+    eq(n2.due, n1.due);
+  });
+  test('a cap at or below zero still schedules one day out', function () {
+    eq(F.next(existing, 3, NOW, 0).due, iso(NOW + DAY));
+    eq(F.next(existing, 3, NOW, -4).due, iso(NOW + DAY));
+  });
+  test('the cap flows through record()', function () {
+    var p = W.record(null, 4, iso(NOW), 3);
+    eq(p.due, iso(NOW + 3 * DAY));
+  });
+  test('daysUntil counts whole days to the exam date', function () {
+    var from = new Date(2026, 9, 7, 15, 30).getTime();
+    eq(W.daysUntil('2026-10-17', from), 10);
+    eq(W.daysUntil('2026-10-07', from), 0);
+    eq(W.daysUntil(null, from), null);
+    eq(W.daysUntil('soon', from), null);
+  });
+
+  /* 12. Status thresholds */
+  group('12. Status thresholds');
+  test('unseen is new', function () { eq(W.status(null), 'new'); eq(W.status(W.blank()), 'new'); });
+  test('weak right after an Again, whatever the stability', function () {
+    eq(W.status(W.record(null, 1, iso(NOW))), 'weak');
+    var p = fp(40, 3, 10, 3);
+    eq(W.status(p), 'mastered');
+    eq(W.status(W.record(p, 1, iso(NOW))), 'weak');
+  });
+  test('mastered at MASTERY_DAYS stability, learning just below', function () {
+    eq(W.MASTERY_DAYS, 21);
+    eq(W.status(fp(21, 3, 5)), 'mastered');
+    eq(W.status(fp(20.99, 3, 5)), 'learning');
+    eq(W.status(fp(1, 2, 1)), 'learning');
+  });
+  test('Good reviews on their due dates move a card from learning to mastered', function () {
+    var p = W.record(null, 3, iso(NOW));
+    var t = NOW, statuses = [W.status(p)];
+    for (var i = 0; i < 6 && W.status(p) !== 'mastered'; i++) {
+      t = Date.parse(p.due);
+      p = W.record(p, 3, iso(t));
+      statuses.push(W.status(p));
+    }
+    eq(statuses[0], 'learning');
+    eq(statuses[statuses.length - 1], 'mastered', statuses.join(' → '));
+    assert(statuses.length <= 4, 'mastered within a few reviews: ' + statuses.join(' → '));
+  });
+
+  /* 13. Stratified exam sampling */
+  group('13. Stratified exam sampling');
+  function topicBank(spec) { // spec: { topic: count }
+    var qs = [];
+    Object.keys(spec).forEach(function (t) {
+      for (var i = 0; i < spec[t]; i++) { var x = q(t + i, [0]); if (t !== 'Unlabeled') x.topic = t; qs.push(x); }
+    });
+    return qs;
+  }
+  function topicOf(id) { return id.replace(/\d+$/, ''); }
+  function countTopics(ids) {
+    var c = {};
+    ids.forEach(function (id) { var t = topicOf(id); c[t] = (c[t] || 0) + 1; });
+    return c;
+  }
+  var sq = topicBank({ A: 60, B: 30, C: 10 });
+  test('matches the target weights, with no duplicates', function () {
+    for (var s = 1; s <= 300; s++) {
+      var ids = W.selectStratified(sq, { A: 20, B: 50, C: 30 }, 20, seeded(s));
+      eq(ids.length, 20);
+      eq(Object.keys(countTopics(ids)).sort().map(function (t) { return t + countTopics(ids)[t]; }), ['A4', 'B10', 'C6']);
+      var seen = {}; ids.forEach(function (id) { assert(!seen[id], 'duplicate ' + id); seen[id] = 1; });
+    }
+  });
+  test('largest-remainder rounding sums to exactly the exam size', function () {
+    var c = countTopics(W.selectStratified(sq, { A: 50, B: 30, C: 20 }, 7, seeded(3)));
+    eq([c.A, c.B, c.C], [4, 2, 1]);
+  });
+  test('average topic share over many exams lands on target; draws within a topic are uniform', function () {
+    var totals = { A: 0, B: 0, C: 0 }, hits = {}, runs = 400;
+    for (var s = 1; s <= runs; s++) {
+      W.selectStratified(sq, { A: 45, B: 35, C: 20 }, 20, seeded(1000 + s)).forEach(function (id) {
+        totals[topicOf(id)]++; hits[id] = (hits[id] || 0) + 1;
+      });
+    }
+    near(totals.A / (runs * 20), 0.45, 1e-9, 'A share');
+    near(totals.B / (runs * 20), 0.35, 1e-9, 'B share');
+    near(totals.C / (runs * 20), 0.20, 1e-9, 'C share');
+    // C has 10 questions and 4 slots per exam: each should be picked ~40% of the time.
+    for (var i = 0; i < 10; i++) near((hits['C' + i] || 0) / runs, totals.C / runs / 10, 0.1, 'C' + i + ' pick rate');
+  });
+  test('natural share is used when there are no weights', function () {
+    var c = countTopics(W.selectStratified(sq, null, 10, seeded(5)));
+    eq([c.A, c.B, c.C], [6, 3, 1]);
+  });
+  test('a topic too small for its quota hands the shortfall to the others', function () {
+    for (var s = 1; s <= 50; s++) {
+      var c = countTopics(W.selectStratified(sq, { A: 10, B: 10, C: 80 }, 40, seeded(s)));
+      eq(c.C, 10, 'C gives all it has');
+      eq(c.A + c.B, 30);
+      assert(Math.abs(c.A - c.B) <= 1, 'shortfall split by weight: ' + c.A + '/' + c.B);
+    }
+  });
+  test('unweighted topics only top up an exam the weighted ones cannot fill', function () {
+    var c = countTopics(W.selectStratified(sq, { A: 100 }, 20, seeded(7)));
+    eq(c.A, 20); eq(c.B || 0, 0); eq(c.C || 0, 0);
+    var all = W.selectStratified(sq, { A: 100 }, 70, seeded(7));
+    eq(all.length, 70); eq(countTopics(all).A, 60);
+  });
+  test('questions without a topic form the Unlabeled bucket', function () {
+    var mixed = topicBank({ A: 10, Unlabeled: 10 });
+    var c = countTopics(W.selectStratified(mixed, { A: 30, Unlabeled: 70 }, 10, seeded(2)));
+    eq([c.A, c.Unlabeled], [3, 7]);
+  });
+  test('topicWeights not summing to 100 are normalised with a warning, not an error', function () {
+    var r = B.normalise(bank(sq.slice(0, 3).concat(sq.slice(60, 63), sq.slice(90, 93)), { exam: { topicWeights: { A: 30, B: 30, C: 34, Z: 0 } } }), 'x.json');
+    assert(r.ok, r.errors.join('; '));
+    assert(r.warnings.some(function (w) { return w.indexOf('sum to 94, not 100') >= 0; }), r.warnings.join('; '));
+    assert(r.warnings.some(function (w) { return w.indexOf('"Z"') >= 0; }), 'unknown topic warned');
+    var tw = r.bank.exam.topicWeights;
+    near(tw.A + tw.B + tw.C + tw.Z, 100, 1e-9, 'sum');
+    near(tw.C, 3400 / 94, 1e-9, 'C');
+  });
+  test('invalid topicWeights values are dropped with a warning', function () {
+    var r = B.normalise(bank([q('a', 0)], { exam: { topicWeights: { Unlabeled: 100, X: 'lots', Y: 140 } } }), 'x.json');
+    assert(r.ok, r.errors.join('; '));
+    eq(Object.keys(r.bank.exam.topicWeights), ['Unlabeled']);
+    eq(r.warnings.filter(function (w) { return w.indexOf('0 to 100') >= 0; }).length, 2);
+    var bad = B.normalise(bank([q('a', 0)], { exam: { topicWeights: [1, 2] } }), 'x.json');
+    assert(bad.ok && !bad.bank.exam.topicWeights, 'non-object ignored');
+  });
+  test('exam sessions use stratified sampling', function () {
+    var eb = B.normalise(bank(sq, { exam: { topicWeights: { A: 20, B: 50, C: 30 } } }), 'x.json').bank;
+    eb.id = 'strat-bank';
+    var c = countTopics(E.createSession(eb, { count: 20, timeLimitMinutes: 0, passMarkPercent: 70 }, seeded(9), 1000).ids);
+    eq([c.A, c.B, c.C], [4, 10, 6]);
+  });
+  test('a bank without topicWeights still imports, with a warning saying what exams will do', function () {
+    var topical = B.normalise(bank(sq.slice(0, 3).concat(sq.slice(60, 63))), 'x.json');
+    assert(topical.ok, topical.errors.join('; '));
+    assert(topical.warnings.some(function (w) { return w.indexOf("follow the bank's own topic mix") >= 0; }), topical.warnings.join('; '));
+    var plain = B.normalise(bank([q('a', 0), q('b', 1)]), 'x.json');
+    assert(plain.ok, plain.errors.join('; '));
+    assert(plain.warnings.some(function (w) { return w.indexOf('draw questions at random and Practice has no topic filter') >= 0; }), plain.warnings.join('; '));
+    var weighted = B.normalise(bank(sq.slice(0, 3), { exam: { topicWeights: { A: 100 } } }), 'x.json');
+    assert(!weighted.warnings.some(function (w) { return w.indexOf('No ') === 0; }), 'no warning when weights are present');
+  });
+  test('exam results break the score down by topic, weakest first', function () {
+    var eb = B.normalise(bank(sq, { exam: { topicWeights: { A: 20, B: 50, C: 30 } } }), 'x.json').bank;
+    eb.id = 'strat-bank';
+    var emap = B.byId(eb);
+    var s = E.createSession(eb, { count: 20, timeLimitMinutes: 0, passMarkPercent: 70 }, seeded(9), 1000);
+    s.ids.forEach(function (id) { if (topicOf(id) !== 'C') s.answers[id] = [0]; }); // all C left unanswered
+    var bt = E.grade(s, emap, {}, 2000).byTopic;
+    eq(bt.map(function (t) { return [t.topic, t.correct, t.total, t.scorePercent, t.weight]; }),
+      [['C', 0, 6, 0, 30], ['B', 10, 10, 100, 50], ['A', 4, 4, 100, 20]]);
+    var plainB = B.normalise(bank([q('a', 0), q('b', 1)]), 'x.json').bank;
+    plainB.id = 'plain';
+    var ps = E.createSession(plainB, { count: 2, timeLimitMinutes: 0, passMarkPercent: 70 }, seeded(1), 1000);
+    eq(E.grade(ps, B.byId(plainB), {}, 2000).byTopic, null, 'no breakdown without topics');
+  });
+  test('practice topic filter keeps only the chosen topics', function () {
+    var mixed = topicBank({ A: 4, B: 3, Unlabeled: 2 });
+    eq(P.topicPool(mixed, null).length, 9);
+    eq(P.topicPool(mixed, []).length, 9);
+    eq(P.topicPool(mixed, ['B', 'Unlabeled']).map(function (x) { return x.id; }), ['B0', 'B1', 'B2', 'Unlabeled0', 'Unlabeled1']);
+  });
+
+  /* 14. Due today and Due first */
+  group('14. Due today and Due first');
+  test('isDue: answered wrong, or due by the end of today', function () {
+    eq(W.isDue(null), false, 'new');
+    eq(W.isDue(fp(2, 1, 3)), true, 'wrong last time');
+    eq(W.isDue(fp(10, 3, -2)), true, 'overdue');
+    eq(W.isDue(fp(30, 3, 10)), false, 'not due');
+    var tonight = new Date(); tonight.setHours(23, 0, 0, 0);
+    var p = fp(10, 3, 0); p.due = tonight.toISOString();
+    eq(W.isDue(p), true, 'due later today');
+  });
+  test('dueCount splits due and new', function () {
+    var qs = ['a', 'b', 'c', 'd'].map(function (id) { return { id: id }; });
+    eq(W.dueCount(qs, { a: fp(2, 1, 3), b: fp(10, 3, -1), c: fp(30, 3, 9) }), { due: 2, 'new': 1 });
+  });
+  test('Due first serves due questions, then new, then the rest', function () {
+    var qs = ['d1', 'd2', 'n1', 'n2', 'r1', 'r2', 'r3'].map(function (id) { return { id: id }; });
+    var progress = { d1: fp(2, 1, 1), d2: fp(10, 3, -3), r1: MASTERED(), r2: MASTERED(), r3: MASTERED() };
+    var DUE_FIRST = 5;
+    eq(W.FOCUS[DUE_FIRST].label, 'Due first');
+    for (var s = 1; s <= 30; s++) {
+      eq(W.selectPractice(qs, progress, 2, DUE_FIRST, seeded(s)).ids.slice().sort(), ['d1', 'd2']);
+      eq(W.selectPractice(qs, progress, 4, DUE_FIRST, seeded(s)).ids.slice().sort(), ['d1', 'd2', 'n1', 'n2']);
+      var five = W.selectPractice(qs, progress, 5, DUE_FIRST, seeded(s));
+      eq(five.ids.filter(function (id) { return id[0] === 'r'; }).length, 1);
+      eq(five.notice, null);
+    }
+    var none = W.selectPractice(qs, { r1: MASTERED() }, 2, DUE_FIRST, seeded(1));
+    eq(none.notice, W.NOTHING_DUE_NOTICE);
+    assert(none.ids.indexOf('r1') < 0, 'new questions before seen ones');
+  });
+  test('"Weak only" is now "Not mastered"; saved focus 5 is valid', function () {
+    eq(W.FOCUS[4].label, 'Not mastered');
+    SET.storage.saveSettings({ focus: 5 });
+    eq(SET.storage.getSettings().focus, 5);
+    SET.storage.deleteAll();
+  });
+
+  /* 15. Readiness estimate */
+  group('15. Readiness estimate');
+  test('guess rate: 1 of n, or 1 over the ways to pick k of n', function () {
+    near(W.guessRate(q('a', [0], 4)), 0.25, 1e-12);
+    near(W.guessRate(q('a', [0, 2], 4)), 1 / 6, 1e-12);
+    near(W.guessRate(q('a', [0, 1, 2], 5)), 1 / 10, 1e-12);
+  });
+  test('nothing studied = guessing level', function () {
+    var r = W.readiness([q('a', [0]), q('b', [1])], {}, null, NOW);
+    eq([r.percent, r.seen, r.coverage], [25, 0, 0]);
+  });
+  test('well-known, recently reviewed questions score high; forgetting lowers it over time', function () {
+    var p = { reps: 4, lapses: 0, difficulty: 4, stability: 40, due: iso(NOW + 40 * DAY), lastReview: iso(NOW), lastGrade: 3, seen: 4, correct: 4, streak: 4 };
+    var today = W.chanceRight(q('a', [0]), p, NOW);
+    var later = W.chanceRight(q('a', [0]), p, NOW + 120 * DAY);
+    assert(today > 0.9, 'today ' + today);
+    assert(later < today - 0.05, 'decays: ' + today + ' → ' + later);
+    var shaky = W.chanceRight(q('a', [0]), { reps: 4, lapses: 2, difficulty: 8, stability: 40, lastReview: iso(NOW), lastGrade: 3, seen: 4, correct: 1 }, NOW);
+    assert(shaky < today - 0.2, 'low accuracy pulls it down: ' + shaky);
+  });
+  test('topics count by exam weight', function () {
+    var qs = topicBank({ A: 2, B: 2 });
+    var good = { reps: 3, lapses: 0, difficulty: 3, stability: 60, lastReview: iso(NOW), lastGrade: 3, seen: 3, correct: 3 };
+    var progress = { A0: good, A1: good };
+    var heavyA = W.readiness(qs, progress, { A: 90, B: 10 }, NOW);
+    var heavyB = W.readiness(qs, progress, { A: 10, B: 90 }, NOW);
+    var natural = W.readiness(qs, progress, null, NOW);
+    assert(heavyA.percent > natural.percent && natural.percent > heavyB.percent, [heavyA.percent, natural.percent, heavyB.percent].join(' / '));
+    eq(heavyA.byTopic[0].topic, 'B', 'weakest topic first');
+    eq([natural.seen, natural.coverage], [2, 50]);
+  });
+
+  /* 16. Question editing */
+  group('16. Question editing');
+  var EB = 'edit-bank';
+  function editBank() {
+    SET.storage.deleteAll();
+    var b = B.normalise(bank([q('a', [1]), q('b', [0, 2])], { exam: { topicWeights: { Unlabeled: 100 } } }), 'x.json').bank;
+    b.id = EB;
+    SET.storage.saveBank(b);
+    SET.storage.saveProgress(EB, { a: fp(10, 3, 5), b: fp(10, 3, 5) }, false);
+    return b;
+  }
+  test('validation uses the upload rules, with friendly messages', function () {
+    var v = SET.editor.validate({ id: 'a', question: ' ', options: ['x', ''], answer: [] });
+    assert(!v.ok);
+    assert(v.errors.indexOf('Question text is missing.') >= 0, v.errors.join('; '));
+    assert(v.errors.some(function (e) { return e.indexOf('Option B is empty') === 0; }), v.errors.join('; '));
+    var none = SET.editor.validate({ id: 'a', question: 'Q?', options: ['x', 'y'], answer: [] });
+    eq(none.errors, ['Tick at least one correct answer.']);
+    var ok = SET.editor.validate({ id: 'a', question: ' Fixed? ', options: ['x', 'y'], answer: [1], topic: ' T ' });
+    assert(ok.ok); eq(ok.question.question, 'Fixed?'); eq(ok.question.topic, 'T');
+  });
+  test('fixing a typo keeps progress; changing the answer resets it', function () {
+    editBank();
+    var typo = SET.editor.validate({ id: 'a', question: 'Question a (fixed)?', options: ['Option 0 of a', 'Option 1 of a', 'Option 2 of a', 'Option 3 of a'], answer: [1] }).question;
+    eq(SET.editor.saveQuestion(EB, typo), { ok: true, resetProgress: false });
+    eq(SET.storage.getBank(EB).questions[0].question, 'Question a (fixed)?');
+    assert(SET.storage.getProgress(EB).a, 'progress kept');
+    var answer = SET.editor.validate({ id: 'b', question: 'Question b?', options: ['Option 0 of b', 'Option 1 of b', 'Option 2 of b', 'Option 3 of b'], answer: [1] }).question;
+    eq(SET.editor.saveQuestion(EB, answer), { ok: true, resetProgress: true });
+    assert(!SET.storage.getProgress(EB).b, 'progress reset');
+    eq(SET.storage.getBank(EB).questions.length, 2);
+    SET.storage.deleteAll();
+  });
+  test('new question ids follow the bank pattern and never collide', function () {
+    eq(SET.editor.newQuestionId({ questions: [q('tprm-001', 0), q('tprm-180', 0)] }), 'tprm-181');
+    eq(SET.editor.newQuestionId({ questions: [q('q7', 0), q('q9', 0)] }), 'q10');
+    eq(SET.editor.newQuestionId({ questions: [q('h-1a2b3c4d', 0)] }), 'q001');
+    eq(SET.editor.newQuestionId({ questions: [] }), 'q001');
+  });
+  test('adding a question appends it as New', function () {
+    editBank();
+    var bk = SET.storage.getBank(EB);
+    var nq = SET.editor.validate({ id: SET.editor.newQuestionId(bk), question: 'Brand new?', options: ['x', 'y', 'z'], answer: [2] }).question;
+    eq(SET.editor.addQuestion(EB, nq), { ok: true });
+    var after = SET.storage.getBank(EB);
+    eq(after.questions.length, 3);
+    eq(after.questions[2].id, nq.id);
+    eq(SET.storage.getEntry(EB).questionCount, 3);
+    eq(W.status(W.get(SET.storage.getProgress(EB), nq.id)), 'new');
+    eq(SET.editor.addQuestion(EB, nq).ok, false, 'same id twice is refused');
+    SET.storage.deleteAll();
+  });
+  test('deleting a question removes it and its progress; the last question cannot be deleted', function () {
+    editBank();
+    eq(SET.editor.deleteQuestion(EB, 'a'), { ok: true });
+    eq(SET.storage.getBank(EB).questions.map(function (x) { return x.id; }), ['b']);
+    assert(!SET.storage.getProgress(EB).a, 'progress removed');
+    assert(SET.storage.getProgress(EB).b, 'other progress kept');
+    eq(SET.storage.getEntry(EB).questionCount, 1);
+    var last = SET.editor.deleteQuestion(EB, 'b');
+    eq(last.ok, false);
+    assert(last.error.indexOf('at least one question') >= 0, last.error);
+    eq(SET.editor.deleteQuestion(EB, 'zzz').ok, false);
+    SET.storage.deleteAll();
+  });
+  test('downloaded bank re-uploads to the same questions', function () {
+    var b = editBank();
+    var json = SET.editor.toJson(SET.storage.getBank(EB));
+    eq(json.questions[0].answer, 'B'); eq(json.questions[1].answer, ['A', 'C']);
+    var again = B.normalise(JSON.parse(JSON.stringify(json)), 'x.json');
+    assert(again.ok, again.errors.join('; '));
+    eq(again.bank.questions, b.questions);
+    eq(again.bank.exam, b.exam);
+    SET.storage.deleteAll();
+  });
+
+  /* 17. Stats and saved exam results */
+  group('17. Stats and saved exam results');
+  test('Weakest 10 ranks by how often you get a question wrong', function () {
+    var qs = ['a', 'b', 'c', 'd', 'e'].map(function (id) { return { id: id }; });
+    function rec(seen, correct, lastGrade) { var p = fp(5, lastGrade, 2); p.seen = seen; p.correct = correct; return p; }
+    var progress = {
+      a: rec(5, 0, 1),  // 0/5 → 0.14
+      b: rec(1, 0, 1),  // 0/1 → 0.33
+      c: rec(4, 2, 3),  // 2/4 → 0.5, 2 misses
+      d: rec(2, 1, 1),  // 1/2 → 0.5, 1 miss, wrong last time
+      e: rec(6, 6, 3)   // never wrong: not listed
+    };
+    eq(SET.stats.weakestRows({ questions: qs }, progress).map(function (r) { return r.q.id; }), ['a', 'b', 'c', 'd']);
+    eq(SET.stats.weakestRows({ questions: qs }, {}).length, 0);
+  });
+  test('an exam summary keeps its review and reopens as the same results', function () {
+    var eb = B.normalise(bank(sq, { exam: { topicWeights: { A: 20, B: 50, C: 30 } } }), 'x.json').bank;
+    eb.id = 'strat-bank';
+    var s = E.createSession(eb, { count: 20, timeLimitMinutes: 0, passMarkPercent: 70 }, seeded(9), 1000);
+    s.ids.forEach(function (id, i) { if (i % 3) s.answers[id] = [i % 2]; });
+    s.flags[s.ids[0]] = true;
+    var live = E.grade(s, B.byId(eb), {}, 2000);
+    var again = E.resultFromSummary('strat-bank', JSON.parse(JSON.stringify(live.summary)));
+    eq(again.items, live.items);
+    eq(again.byTopic, live.byTopic);
+    eq([again.correct, again.total, again.scorePercent, again.passed, again.timeUsedSec],
+      [live.correct, live.total, live.scorePercent, live.passed, live.timeUsedSec]);
+    eq(E.resultFromSummary('x', { mode: 'exam', size: 3 }), null, 'older summaries without a review');
+    eq(E.resultFromSummary('x', { mode: 'practice', review: { items: [] } }), null);
+  });
+  test('only the 30 most recent exams keep their full review', function () {
+    SET.storage.deleteAll();
+    var b = B.normalise(bank([q('a', 0)]), 'x.json').bank; b.id = 'rv'; SET.storage.saveBank(b);
+    for (var i = 0; i < 35; i++) SET.storage.addSession('rv', { id: 's' + i, mode: 'exam', review: { items: [] } });
+    var list = SET.storage.getSessions('rv');
+    eq(list.length, 35);
+    eq(list.filter(function (x) { return x.review; }).length, 30);
+    assert(!list[4].review && list[5].review && list[34].review, 'oldest lose it first');
+    SET.storage.deleteAll();
+  });
+
+  /* 18. Bug fixes */
+  group('18. Bug fixes');
+  test('#2 upgrading: old Mastered stays Mastered, and old questions are not all due at once', function () {
+    var longAgo = prog(5, 5, 4, [true, true, true, true], true);            // last seen 2026-01-01
+    var recent = prog(5, 5, 3, [true, true, true], true); recent.lastSeen = iso(Date.now() - DAY);
+    var learning = prog(2, 1, 1, [false, true], true); learning.lastSeen = iso(Date.now() - DAY);
+    eq(W.status(longAgo), 'mastered');
+    eq(W.status(recent), 'mastered');
+    eq(W.isDue(recent), false, 'studied yesterday, mastered: not due');
+    eq(W.isDue(learning), false, 'studied yesterday, 3-day seed: not due yet');
+    eq(W.isDue(longAgo), true, 'months ago: genuinely due');
+    eq(W.isDue(prog(2, 1, 0, [true, false], false)), true, 'wrong last time: due');
+  });
+  test('#4 / #7a the right answer "changed" only when it is different text', function () {
+    var base = { options: ['Alpha', 'Beta', 'Gamma'], answer: [0] };
+    var c = function (options, answer) { return B.answerChanged(base, { options: options, answer: answer }); };
+    eq(c(['Alpha', 'Beta', 'Gamma'], [0]), false, 'unchanged');
+    eq(c(['Beta', 'Alpha', 'Gamma'], [1]), false, 'options reordered');
+    eq(c(['Alpha', 'Beta', 'Gamma', 'Delta'], [0]), false, 'distractor added');
+    eq(c(['Alpha!', 'Beta', 'Gamma'], [0]), false, 'typo fixed in the answer');
+    eq(c(['Alpha', 'Beta', 'Gamma'], [1]), true, 'different option chosen');
+    eq(c(['Beta', 'Alpha', 'Gamma'], [0]), true, 'texts swapped, same letter');
+    eq(c(['Alpha', 'Beta', 'Gamma'], [0, 2]), true, 'second answer added');
+  });
+  test('#4 re-uploading resets progress only where the answer changed', function () {
+    var oldB = B.normalise(bank([q('a', 0), q('b', 0)]), 'x.json').bank;
+    var nb = bank([q('a', 0), q('b', 1)]);
+    nb.questions[0].question = 'Reworded a?';
+    var newB = B.normalise(nb, 'x.json').bank;
+    var m = B.mergeUpdate(oldB, newB, { a: fp(10, 3, 5), b: fp(10, 3, 5) });
+    assert(m.progress.a, 'reworded question keeps progress');
+    assert(!m.progress.b, 'changed answer loses progress');
+    eq([m.kept, m.added, m.removed, m.reset], [2, 0, 0, 1]);
+  });
+  test('#4 in-app edits are remembered so a re-upload can warn first', function () {
+    editBank();
+    assert(!SET.storage.getBank(EB).editedAt, 'fresh upload');
+    SET.editor.deleteQuestion(EB, 'a');
+    assert(SET.storage.getBank(EB).editedAt, 'edit recorded');
+    assert(SET.editor.toJson(SET.storage.getBank(EB)).editedAt === undefined, 'not written into the downloaded file');
+    SET.storage.deleteAll();
+  });
+  test('#9 a record with no last-review time still moves forward', function () {
+    var p = { reps: 2, lapses: 0, difficulty: 5, stability: 4, due: null, lastReview: null, lastGrade: 3, seen: 2, correct: 2, streak: 2 };
+    var n = W.record(p, 3, iso(NOW));
+    eq(n.lastReview, iso(NOW));
+    var later = W.record(n, 3, n.due);
+    assert(later.stability > n.stability, 'stability grows on the next spaced review');
+  });
+  test('#15 backups now carry schema version 2; version 1 backups still import', function () {
+    eq(SET.storage.SCHEMA_VERSION, 2);
+    eq(SET.storage.checkBackup({ format: 'set-backup', version: 1, banks: [] }), null);
+    assert(SET.storage.checkBackup({ format: 'set-backup', version: 3, banks: [] }), 'newer refused');
+  });
+
+  /* 19. Readiness calibration */
+  group('19. Readiness calibration');
+  function ex(predicted, score, answered, size) {
+    return { mode: 'exam', predicted: predicted, scorePercent: score, answered: answered === undefined ? 60 : answered, size: size || 60 };
+  }
+  test('no usable mock exams = no correction', function () {
+    eq(W.calibration([]), { bias: 0, exams: 0 });
+    eq(W.calibration([{ mode: 'exam', scorePercent: 50, size: 60 }, { mode: 'practice', predicted: 70, scorePercent: 40 }]), { bias: 0, exams: 0 }, 'older exams without a prediction');
+  });
+  test('the correction grows with evidence and is pulled towards zero early on', function () {
+    eq(W.calibration([ex(70, 61)]), { bias: -3, exams: 1 }, '1 exam: −9 / 3');
+    eq(W.calibration([ex(70, 61), ex(72, 63)]), { bias: -5, exams: 2 }, '2 exams: −18 / 4 = −4.5');
+    eq(W.calibration([ex(70, 61), ex(72, 63), ex(68, 59), ex(71, 62), ex(69, 60)]), { bias: -6, exams: 5 }, '5 exams: −45 / 7');
+    eq(W.calibration([ex(60, 70), ex(60, 70), ex(60, 70)]).bias, 6, 'underestimates correct upwards');
+  });
+  test('uses only the last 5, skips mostly-unanswered exams, and caps at ±20', function () {
+    var old = [ex(90, 10), ex(90, 10), ex(90, 10)];
+    eq(W.calibration(old.concat([ex(70, 70), ex(70, 70), ex(70, 70), ex(70, 70), ex(70, 70)])).bias, 0, 'old exams roll off');
+    eq(W.calibration([ex(70, 20, 30)]).exams, 0, 'half unanswered: ignored');
+    eq(W.calibration([ex(100, 0), ex(100, 0), ex(100, 0), ex(100, 0), ex(100, 0)]).bias, -20);
+  });
+  test('expected score is the mean chance over exactly the drawn questions', function () {
+    var qs = [q('a', [0]), q('b', [0])];
+    near(W.expectedScore(qs, {}, NOW), 25, 1e-9, 'unseen 4-option questions');
+    var good = { reps: 3, lapses: 0, difficulty: 3, stability: 60, lastReview: iso(NOW), lastGrade: 3, seen: 3, correct: 3 };
+    var expect = Math.round((W.chanceRight(qs[0], good, NOW) + 0.25) / 2 * 1000) / 10;
+    eq(W.expectedScore(qs, { a: good }, NOW), expect);
+  });
+  test('an exam stores its prediction and how many were answered', function () {
+    var eb = B.normalise(bank([q('a', [0]), q('b', [0]), q('c', [0])]), 'x.json').bank; eb.id = 'cal';
+    var s = E.createSession(eb, { count: 3, timeLimitMinutes: 0, passMarkPercent: 70 }, seeded(4), 1000);
+    s.predicted = 41.5;
+    s.answers = { a: [0], b: [1] };
+    var r = E.grade(s, B.byId(eb), {}, 2000);
+    eq([r.summary.predicted, r.summary.answered, r.predicted], [41.5, 2, 41.5]);
+    eq(E.resultFromSummary('cal', JSON.parse(JSON.stringify(r.summary))).predicted, 41.5, 'kept when reopened');
+    var plain = E.createSession(eb, { count: 3, timeLimitMinutes: 0, passMarkPercent: 70 }, seeded(4), 1000);
+    eq(E.grade(plain, B.byId(eb), {}, 2000).summary.predicted, undefined, 'no prediction, no field');
+  });
+
+  /* 20. Chance of passing */
+  group('20. Chance of passing');
+  test('normal CDF matches known values', function () {
+    near(W.normalCdf(0), 0.5, 1e-7); near(W.normalCdf(1.96), 0.9750021, 1e-6);
+    near(W.normalCdf(-1), 0.1586553, 1e-6); near(W.normalCdf(0.6), 0.7257469, 1e-6);
+  });
+  test('worked example: readiness 75%, 60 questions, 70% pass mark, no mock exams yet ≈ 72%', function () {
+    var c = W.passChance(75, 60, 70, []);
+    eq([c.needed, c.modelError, c.band], [42, 8, 'borderline']);
+    assert(c.percent === 72, 'got ' + c.percent);
+  });
+  test('right at the pass mark is about a coin flip; far above is likely, far below unlikely', function () {
+    var at = W.passChance(69.2, 60, 70, []).percent;
+    assert(at >= 48 && at <= 52, 'at the line: ' + at);
+    eq(W.passChance(95, 60, 70, []).band, 'likely');
+    eq(W.passChance(45, 60, 70, []).band, 'unlikely');
+  });
+  test('consistent mock exams shrink the uncertainty, erratic ones widen it', function () {
+    var steady = [ex(70, 75), ex(70, 75), ex(70, 76), ex(70, 74)];
+    var erratic = [ex(70, 55), ex(70, 90), ex(70, 60), ex(70, 85)];
+    var calm = W.passChance(78, 60, 70, steady), wild = W.passChance(78, 60, 70, erratic);
+    eq(calm.modelError, 3, 'floor of 3 points');
+    assert(wild.modelError > 10, 'erratic: ' + wild.modelError);
+    assert(calm.percent > W.passChance(78, 60, 70, []).percent && W.passChance(78, 60, 70, []).percent > wild.percent,
+      [calm.percent, W.passChance(78, 60, 70, []).percent, wild.percent].join(' / '));
+  });
+  test('edge cases: 100% pass mark, tiny exams, extreme readiness', function () {
+    eq(W.passChance(80, 10, 100, []).needed, 10);
+    eq(W.passChance(80, 1, 70, []).needed, 1);
+    assert(W.passChance(100, 60, 70, []).percent >= 99);
+    assert(W.passChance(0, 60, 70, []).percent <= 1);
+  });
+
+  test('marking a question verified saves it, keeps progress and counts as an in-app change', function () {
+    SET.storage.deleteAll();
+    var b = B.normalise(bank([{ id: 'u', question: 'Unsure?', options: ['x', 'y'], answer: 0, unverified: true }]), 'x.json').bank;
+    b.id = 'vb'; SET.storage.saveBank(b);
+    SET.storage.saveProgress('vb', { u: fp(10, 3, 5) }, false);
+    eq(SET.editor.setVerified('vb', 'u', true), true);
+    var after = SET.storage.getBank('vb');
+    eq(after.questions[0].unverified, undefined);
+    assert(after.editedAt, 'recorded as an edit');
+    assert(SET.storage.getProgress('vb').u, 'progress kept');
+    eq(SET.editor.setVerified('vb', 'u', false), true);
+    eq(SET.storage.getBank('vb').questions[0].unverified, true, 'can be flagged again');
+    eq(SET.editor.setVerified('vb', 'missing', true), false);
+    SET.storage.deleteAll();
+  });
+
+  test('readiness by topic reports how many questions of each topic were seen', function () {
+    var qs = topicBank({ A: 3, B: 2 });
+    var good = { reps: 3, lapses: 0, difficulty: 3, stability: 60, lastReview: iso(NOW), lastGrade: 3, seen: 3, correct: 3 };
+    var r = W.readiness(qs, { A0: good, A1: good }, null, NOW);
+    var byName = {}; r.byTopic.forEach(function (t) { byName[t.topic] = t; });
+    eq([byName.A.seen, byName.A.total, byName.B.seen, byName.B.total], [2, 3, 0, 2]);
+  });
+  needsTprm('the tagged TPRM bank covers the six exam domains', function () {
+    var res = B.normalise(JSON.parse(JSON.stringify(window.TPRM_BANK)), 'tprm.json');
+    var topics = {};
+    res.bank.questions.forEach(function (x) { topics[x.topic || 'Unlabeled'] = true; });
+    eq(Object.keys(topics).sort(), ['Assessment Configuration', 'Core Configuration', 'Other Application Relationships',
+      'Third-party Portal', 'Third-party Risk Management Fundamentals and Third-party Risk Management Review', 'Third-party Supporting Processes']);
+  });
+
+  /* 21. Cramming */
+  group('21. Cramming');
+  test('repeating a question the same day does not raise its readiness', function () {
+    var t0 = new Date(2026, 5, 1, 8, 0).getTime(), at = t0 + 30 * DAY;
+    var qq = { options: ['a', 'b', 'c', 'd'], answer: [0] };
+    var crammed = null;
+    for (var i = 0; i < 8; i++) crammed = W.record(crammed, 3, iso(t0 + i * 3600000));
+    var once = W.record(null, 3, iso(t0));
+    eq([crammed.seen, crammed.correct, crammed.daySeen, crammed.dayCorrect], [8, 8, 1, 1]);
+    near(W.chanceRight(qq, crammed, at), W.chanceRight(qq, once, at), 1e-12, 'same estimate');
+  });
+  test('the first answer of the day counts, even when later answers that day are right', function () {
+    var t0 = new Date(2026, 5, 1, 8, 0).getTime();
+    var p = W.record(null, 1, iso(t0));            // wrong first thing
+    p = W.record(p, 3, iso(t0 + 3600000));         // right after seeing the answer
+    p = W.record(p, 3, iso(t0 + 7200000));
+    eq([p.daySeen, p.dayCorrect], [1, 0]);
+    p = W.record(p, 3, iso(t0 + DAY));             // next day, right first time
+    eq([p.daySeen, p.dayCorrect], [2, 1]);
+  });
+  test('Weakest 10 sees through same-day repeats', function () {
+    var t0 = new Date(2026, 5, 1, 8, 0).getTime();
+    var p = W.record(null, 1, iso(t0));
+    for (var i = 1; i < 6; i++) p = W.record(p, 3, iso(t0 + i * 3600000));
+    var rows = SET.stats.weakestRows({ questions: [{ id: 'x' }] }, { x: p });
+    eq(rows.length, 1);
+    near(rows[0].score, 1 / 3, 1e-12, '0 of 1 first answers, smoothed');
+  });
+  test('older records without daily counts fall back to all answers', function () {
+    var old = fp(10, 3, 5); delete old.daySeen; delete old.dayCorrect;
+    eq(W.daily(old), { seen: 3, correct: 3 });
+    var next = W.record(old, 3, iso(NOW));
+    eq([next.daySeen, next.dayCorrect], [4, 4]);
+  });
+
+  /* 22. Hostile or damaged files */
+  group('22. Hostile or damaged files');
+  test('built-in names are refused as topics and ids, and dropped from topic weights', function () {
+    ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'prototype'].forEach(function (name) {
+      var t = q('a', 0); t.topic = name;
+      var r1 = B.normalise(bank([t]), 'x.json');
+      assert(!r1.ok && hasError(r1, 'topic "' + name + '" is a reserved name'), name + ' as topic: ' + r1.errors.join('; '));
+      var r2 = B.normalise(bank([q(name, 0)]), 'x.json');
+      assert(!r2.ok && hasError(r2, 'id "' + name + '" is a reserved name'), name + ' as id: ' + r2.errors.join('; '));
+    });
+    var w = B.normalise(JSON.parse('{"title":"T","exam":{"topicWeights":{"__proto__":50,"A":50}},"questions":[{"id":"a","question":"Q?","options":["x","y"],"answer":0,"topic":"A"}]}'), 'x.json');
+    assert(w.ok, w.errors.join('; '));
+    eq(Object.keys(w.bank.exam.topicWeights), ['A']);
+    assert(w.warnings.some(function (x) { return x.indexOf('reserved name "__proto__"') >= 0; }), w.warnings.join('; '));
+    eq(SET.editor.validate({ id: 'z', question: 'Q?', options: ['x', 'y'], answer: [0], topic: 'constructor' }).ok, false, 'editor uses the same rule');
+  });
+  test('internal tables have no built-in names, so nothing leaks onto every object', function () {
+    // Bypass validation on purpose, as damaged stored data would.
+    var qs = [{ id: 'a', question: 'A?', options: ['x', 'y'], answer: [0], topic: '__proto__' },
+      { id: 'b', question: 'B?', options: ['x', 'y'], answer: [0], topic: 'constructor' },
+      { id: 'c', question: 'C?', options: ['x', 'y'], answer: [0], topic: 'toString' }];
+    eq(W.selectStratified(qs, null, 3, seeded(1)).length, 3, 'mock exam draws');
+    eq(W.readiness(qs, {}, null, NOW).byTopic.length, 3);
+    eq(E.topicBreakdown(qs.map(function (x) { return { id: x.id, correct: true }; }), B.byId({ questions: qs }), null).length, 3);
+    eq(['sum', 'total', 'seen', 'n', 'push'].filter(function (k) { return k in {}; }), [], 'Object.prototype untouched');
+    eq(B.byId({ questions: qs }).toString, undefined, 'id lookups have no built-ins');
+  });
+  test('backup progress and sessions with nonsense values are cleaned', function () {
+    eq(SET.storage.cleanRecord({ reps: 'many', stability: 'abc', seen: 'lots' }), null, 'unusable core: starts as New');
+    var r = SET.storage.cleanRecord({ reps: 3, stability: 12, difficulty: 5, seen: 'lots', correct: -5, due: 'never', lastGrade: 9, daySeen: 2, dayCorrect: 7 });
+    eq([r.seen, r.correct, r.due, r.lastGrade, r.daySeen, r.dayCorrect], [0, 0, null, null, 2, 2]);
+    eq(SET.storage.cleanRecord(prog(3, 2, 0, [true, true, false], false)).lastCorrect, false, 'pre-FSRS records still import');
+    eq(SET.storage.cleanSession({ mode: 'exam', scorePercent: 'high', size: 'big', endedAt: 'soon' }), null);
+    var sess = SET.storage.cleanSession({ id: 's', mode: 'exam', scorePercent: 80, size: 10, endedAt: iso(NOW), predicted: 'x',
+      review: { items: [{ id: 'a', selected: 'B', correct: 'yes' }, 7], byTopic: [{ topic: { x: 1 } }] } });
+    eq(sess.predicted, undefined);
+    eq(sess.review, { items: [{ id: 'a', selected: [], correct: false, flagged: false }], byTopic: null });
+  });
+  test('damaged banks in a backup are skipped and named; good ones import', function () {
+    SET.storage.deleteAll();
+    var good = B.normalise(bank([q('a', 0), q('b', 1)]), 'x.json').bank;
+    var data = { format: 'set-backup', version: 2, banks: [
+      { entry: { id: 'good', title: 'T', updatedAt: iso(NOW) }, bank: JSON.parse(JSON.stringify(good)), progress: { a: fp(10, 3, 5), junk: 7 }, sessions: [{ mode: 'practice' }, 'x'] },
+      { entry: { id: 'bad', title: 'Evil' }, bank: { title: { not: 'text' }, questions: [{ id: 'x', question: { bad: 1 }, options: 'nope', answer: 'A' }] } },
+      { entry: { id: 'proto' }, bank: { title: 'Proto', questions: [{ id: 'p', question: 'Q?', options: ['x', 'y'], answer: 0, topic: '__proto__' }] } }
+    ] };
+    var r = SET.storage.importBackup(data, 'merge');
+    assert(r.ok, r.error);
+    eq([r.added, r.rejected.length], [1, 2]);
+    eq(r.rejected[1].title, 'Proto');
+    assert(r.rejected[1].error.indexOf('reserved name') >= 0, r.rejected[1].error);
+    eq(SET.storage.getIndex().banks.map(function (b) { return b.id; }), ['good']);
+    eq(Object.keys(SET.storage.getProgress('good')), ['a'], 'non-record progress dropped');
+    eq(SET.storage.getSessions('good').length, 0, 'sessions without usable values dropped');
+    SET.storage.deleteAll();
+  });
+  test('"Replace everything" with an unreadable backup changes nothing', function () {
+    SET.storage.deleteAll();
+    var keep = B.normalise(bank([q('a', 0)]), 'x.json').bank; keep.id = 'keep'; SET.storage.saveBank(keep);
+    var r = SET.storage.importBackup({ format: 'set-backup', version: 2, banks: [{ entry: { id: 'x' }, bank: { questions: [] } }] }, 'replace');
+    eq(r.ok, false);
+    assert(r.error.indexOf('nothing was changed') >= 0, r.error);
+    assert(SET.storage.getBank('keep'), 'existing bank survived');
+    SET.storage.deleteAll();
   });
 
   var summary = document.getElementById('summary');

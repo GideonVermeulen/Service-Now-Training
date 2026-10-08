@@ -25,10 +25,13 @@
 
     var bankHash = '#/bank/' + encodeURIComponent(bankId);
     var hasTopics = bank.questions.some(function (q) { return q.topic; });
+    var active = SET.storage.getActive();
+    var examLive = !!(active && active.type === 'exam' && active.bankId === bankId);
 
     main.appendChild(el('section', { class: 'screen screen--wide' },
       el('a', { class: 'back-link', href: bankHash }, '← ' + bank.title),
       el('h1', { tabindex: '-1' }, 'Stats'),
+      examLive ? ui.callout('Answers are hidden while your exam on this bank is in progress.', 'info') : null,
       el('div', { class: 'tiles' },
         ui.tile('Mastery', W.pct(counts.mastered, counts.total) + '%', counts.mastered + ' of ' + counts.total + ' mastered'),
         ui.tile('Questions seen', seenQ + ' / ' + counts.total, W.pct(seenQ, counts.total) + '% coverage'),
@@ -45,10 +48,10 @@
       ),
       el('div', { class: 'grid-2' },
         weakest(bank, progress),
-        hasTopics ? byTopic(bank, progress) : history(sessions)
+        hasTopics ? byTopic(bank, progress) : history(sessions, bankId, examLive)
       ),
-      hasTopics ? history(sessions) : null,
-      questionTable(bank, progress, hasTopics),
+      hasTopics ? history(sessions, bankId, examLive) : null,
+      questionTable(bank, progress, hasTopics, examLive),
       el('section', { class: 'card card--danger' },
         el('h2', null, 'Reset progress'),
         el('p', { class: 'muted' }, 'Clears progress and session history for this bank. The questions are kept.'),
@@ -150,30 +153,39 @@
 
   /* ---------- lists ---------- */
 
+  // Questions you get wrong most, by accuracy smoothed towards 50% so one miss doesn't outrank five.
+  // Uses first answers of each day, so same-day repeats can't hide a weak question.
+  // Only questions answered wrong at least once. Ties: more misses, then wrong last time.
+  function weakestRows(bank, progress) {
+    return bank.questions.map(function (q) {
+      var p = W.get(progress, q.id);
+      var d = W.daily(p), seen = d.seen, correct = d.correct;
+      return { q: q, p: p, misses: seen - correct, score: (correct + 1) / (seen + 2) };
+    }).filter(function (r) { return r.misses > 0; }).sort(function (a, b) {
+      return a.score - b.score || b.misses - a.misses || (b.p.lastGrade === 1) - (a.p.lastGrade === 1);
+    }).slice(0, 10);
+  }
+
   function weakest(bank, progress) {
     var ui = SET.ui, el = ui.el;
-    var rows = bank.questions.map(function (q) {
-      var p = W.get(progress, q.id);
-      return { q: q, p: p, w: W.weakness(p), t: p.lastSeen ? Date.parse(p.lastSeen) : 0 };
-    }).filter(function (r) { return r.p.seen; });
-    rows.sort(function (a, b) { return b.w - a.w || b.t - a.t; });
-    rows = rows.slice(0, 10);
+    var rows = weakestRows(bank, progress);
     return el('section', { class: 'card' },
       el('h2', null, 'Weakest 10'),
+      el('p', { class: 'muted small' }, 'The questions you get wrong most often.'),
       rows.length ? el('ol', { class: 'weak-list' }, rows.map(function (r) {
         return el('li', null,
           el('p', { class: 'clamp-2' }, r.q.question),
           el('div', { class: 'weak-list__meta' }, ui.chip(W.status(r.p)), el('span', { class: 'muted small num' }, accText(r.p)))
         );
-      })) : el('p', { class: 'muted' }, 'Answer some questions first.')
+      })) : el('p', { class: 'muted' }, 'Nothing yet — questions show here once you’ve answered them wrong.')
     );
   }
 
   function byTopic(bank, progress) {
     var el = SET.ui.el;
-    var topics = {};
+    var topics = Object.create(null); // keyed by topic: no built-in names
     bank.questions.forEach(function (q) {
-      var t = q.topic || 'No topic';
+      var t = q.topic || 'Unlabeled';
       var row = topics[t] || (topics[t] = { n: 0, mastered: 0, seen: 0, correct: 0 });
       var p = W.get(progress, q.id);
       row.n++;
@@ -199,7 +211,7 @@
     );
   }
 
-  function history(sessions) {
+  function history(sessions, bankId, examLive) {
     var ui = SET.ui, el = ui.el;
     var list = sessions.slice().reverse();
     return el('section', { class: 'card' },
@@ -207,7 +219,8 @@
       list.length ? el('div', { class: 'table-wrap table-wrap--scroll' },
         el('table', { class: 'table' },
           el('thead', null, el('tr', null, el('th', { scope: 'col' }, 'Date'), el('th', { scope: 'col' }, 'Mode'),
-            el('th', { scope: 'col', class: 'num' }, 'Size'), el('th', { scope: 'col', class: 'num' }, 'Score'), el('th', { scope: 'col' }, 'Result'))),
+            el('th', { scope: 'col', class: 'num' }, 'Size'), el('th', { scope: 'col', class: 'num' }, 'Score'), el('th', { scope: 'col' }, 'Result'),
+            el('th', { scope: 'col' }, el('span', { class: 'sr-only' }, 'Review')))),
           el('tbody', null, list.map(function (s) {
             return el('tr', null,
               el('td', { class: 'num' }, ui.date(s.endedAt)),
@@ -216,7 +229,11 @@
               el('td', { class: 'num' }, s.scorePercent + '%'),
               el('td', null, s.mode === 'exam'
                 ? el('span', { class: 'result-tag ' + (s.passed ? 'is-pass' : 'is-fail') }, s.passed ? '✓ Pass' : '✕ Fail')
-                : el('span', { class: 'muted' }, '—')));
+                : el('span', { class: 'muted' }, '—')),
+              el('td', null, s.mode === 'exam' && s.review && !examLive
+                ? el('a', { class: 'link', href: '#/bank/' + encodeURIComponent(bankId) + '/result/' + encodeURIComponent(s.id),
+                  'aria-label': 'View exam results from ' + ui.date(s.endedAt) }, 'View')
+                : null));
           }))
         )
       ) : el('p', { class: 'muted' }, 'No sessions yet.')
@@ -225,7 +242,7 @@
 
   /* ---------- all-questions table ---------- */
 
-  function questionTable(bank, progress, hasTopics) {
+  function questionTable(bank, progress, hasTopics, examLive) {
     var ui = SET.ui, el = ui.el;
     var rows = bank.questions.map(function (q, i) {
       var p = W.get(progress, q.id);
@@ -238,7 +255,7 @@
       { key: 'n', label: '#', cls: 'num', val: function (r) { return r.n; } },
       { key: 'question', label: 'Question', val: function (r) { return r.q.question.toLowerCase(); } }
     ];
-    if (hasTopics) cols.push({ key: 'topic', label: 'Topic', cls: 'col-opt', val: function (r) { return (r.q.topic || '').toLowerCase(); } });
+    if (hasTopics) cols.push({ key: 'topic', label: 'Topic', cls: 'col-opt', val: function (r) { return (r.q.topic || 'Unlabeled').toLowerCase(); } });
     cols.push(
       { key: 'status', label: 'Status', val: function (r) { return statusOrder[r.status]; } },
       { key: 'seen', label: 'Seen', cls: 'num col-opt', val: function (r) { return r.p.seen || 0; } },
@@ -270,7 +287,7 @@
         if (view.filter !== 'all' && r.status !== view.filter) return false;
         if (!term) return true;
         return r.q.question.toLowerCase().indexOf(term) >= 0 ||
-          (r.q.topic || '').toLowerCase().indexOf(term) >= 0 ||
+          (r.q.topic || 'Unlabeled').toLowerCase().indexOf(term) >= 0 ||
           r.q.options.some(function (o) { return o.toLowerCase().indexOf(term) >= 0; });
       });
       list.sort(function (a, b) {
@@ -293,12 +310,15 @@
                 el('span', { class: 'clamp-2' }, r.q.question)));
           }
           if (c.key === 'status') return el('td', null, ui.chip(r.status));
-          if (c.key === 'topic') return el('td', { class: c.cls }, r.q.topic || '—');
+          if (c.key === 'topic') return el('td', { class: c.cls + (r.q.topic ? '' : ' muted') }, r.q.topic || 'Unlabeled');
           if (c.key === 'acc') return el('td', { class: c.cls }, r.acc === null ? '—' : W.pct(r.p.correct, r.p.seen) + '%');
           return el('td', { class: c.cls }, String(c.val(r)));
         });
         tbody.appendChild(el('tr', { class: 'row-click' + (open ? ' is-open' : ''), onclick: toggle }, cells));
-        if (open) {
+        if (open && examLive) {
+          tbody.appendChild(el('tr', { class: 'row-detail' },
+            el('td', { colspan: cols.length, class: 'muted' }, 'The answer is hidden until you finish your exam.')));
+        } else if (open) {
           tbody.appendChild(el('tr', { class: 'row-detail' },
             el('td', { colspan: cols.length },
               el('ol', { class: 'answer-key' }, r.q.options.map(function (o, i) {
@@ -309,7 +329,11 @@
                   ok ? el('span', { class: 'answer-key__mark' }, '✓ Correct answer') : null);
               })),
               r.q.explanation ? ui.explanation(r.q.explanation) : null,
-              r.q.unverified ? ui.unverifiedNote() : null)));
+              r.q.unverified ? ui.unverifiedNote({ bankId: bank.id, q: r.q }) : null,
+              el('div', { class: 'actions actions--tight' },
+                el('button', { class: 'btn btn-sm', type: 'button', onclick: function () {
+                  SET.editor.open(bank.id, r.q.id).then(function (saved) { if (saved) ui.rerender(); });
+                } }, 'Edit question')))));
         }
       });
     }
@@ -326,12 +350,16 @@
     drawBody();
 
     return el('section', { class: 'card' },
-      el('h2', null, 'All questions'),
+      el('div', { class: 'card-head' },
+        el('h2', null, 'All questions'),
+        el('button', { class: 'btn btn-sm', type: 'button', onclick: function () {
+          SET.editor.open(bank.id, null).then(function (done) { if (done) ui.rerender(); });
+        } }, '+ Add question')),
       el('div', { class: 'toolbar' }, filter, search),
       countLine,
       el('div', { class: 'table-wrap table-wrap--scroll' }, el('table', { class: 'table table--questions' }, thead, tbody))
     );
   }
 
-  SET.stats = { render: render };
+  SET.stats = { render: render, weakestRows: weakestRows };
 })();

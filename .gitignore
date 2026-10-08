@@ -1,0 +1,5 @@
+node_modules/
+
+# Question banks stay on your machine (exam content must not be published)
+banks/tprm.json
+tests/tprm-data.js
