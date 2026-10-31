@@ -595,7 +595,7 @@
     near(p.stability, F.initStability(3), 1e-9, 'only the first answer of the day counted');
     eq(p.seen, 8); eq(p.correct, 8); eq(p.streak, 8);
     eq(p.lastReview, iso(t), 'schedule anchored to the counted review');
-    p = W.record(p, 3, p.due);
+    p = W.record(p, 3, iso(t + 3 * DAY)); // the unfuzzed Good interval, so the result doesn't depend on the time zone
     eq(W.status(p), 'mastered', 'next spaced review');
   });
   test('difficulty stays within 1–10', function () {
