@@ -12,7 +12,7 @@
     { label: 'Due first', F: 4, dueFirst: true, hint: 'Questions due for review (or answered wrong) first, then new ones, then the rest.' }
   ];
   var DEFAULT_FOCUS = 2;
-  var MASTERY_DAYS = 21; // the one place "mastered" is defined: FSRS stability of at least this many days
+  var MASTERY_DAYS = 10; // the one place "mastered" is defined: FSRS stability of at least this many days (a 90% chance of still knowing it 10 days on)
   var ALL_MASTERED_NOTICE = 'Everything is mastered — showing a normal Strong-focus test';
   var NOTHING_DUE_NOTICE = 'Nothing is due for review — showing new questions first, then your weakest.';
   var DAY_MS = 86400000;
@@ -322,13 +322,12 @@
   }
 
   // Latest moment a review may be due so it happens before the exam: local midnight starting the
-  // day before the exam. null (no cap) without a date, when the exam is today or has passed, and
-  // when it is tomorrow (today is the only review day left, and a question just answered can't
-  // sensibly be due again today).
+  // day before the exam. When the exam is tomorrow, the morning of the exam (a question just answered
+  // can't be due again today). null (no cap) without a date, or when the exam is today or has passed.
   function latestDue(examDate, now) {
     var days = daysUntil(examDate, now);
-    if (days === null || days <= 1) return null;
-    return dayStart(parseDay(examDate), -1);
+    if (days === null || days <= 0) return null;
+    return dayStart(parseDay(examDate), days === 1 ? 0 : -1);
   }
 
   var SPREAD_DAYS = 4; // capped reviews are spread over up to this many days before the exam
@@ -347,14 +346,19 @@
 
   // Recomputes due dates for every studied question against the exam date (null = no exam).
   // Never touches stability, difficulty or history. Questions answered wrong last time are left
-  // alone (they're due anyway). Returns { progress (a new object), moved }.
+  // alone (they're due anyway), and so, when the exam is today or tomorrow, are questions already due
+  // by today:
+  // otherwise they would be pushed past the exam. Returns { progress (a new object), moved }.
   function reschedule(progress, examDate, now) {
     var nowMs = toMs(now);
+    var days = daysUntil(examDate, nowMs);
+    var keepDueBy = days === 0 || days === 1 ? dayStart(nowMs, 1) : null;
     var out = {}, moved = 0;
     Object.keys(progress || {}).forEach(function (id) {
       out[id] = progress[id];
       var p = upgrade(progress[id]);
       if (!p || !p.reps || !p.lastReview || p.lastGrade === 1 || !(p.stability > 0)) return;
+      if (keepDueBy !== null && Date.parse(p.due) < keepDueBy) return;
       var last = Date.parse(p.lastReview);
       if (isNaN(last)) return;
       var due = new Date(SET.fsrs.capDue(SET.fsrs.naturalDue(last, p.stability), examCap(examDate, id, nowMs), nowMs)).toISOString();

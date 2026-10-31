@@ -458,7 +458,7 @@
       topicCard,
       el('div', { class: 'actions actions--wrap' },
         wrongIds.length ? el('button', { class: 'btn btn-primary', type: 'button', onclick: function () {
-          SET.practice.start(bank.id, { ids: wrongIds });
+          SET.practice.start(bank.id, { ids: wrongIds, counted: false });
         } }, 'Practise the ones I got wrong (' + wrongIds.length + ')') : null,
         el('a', { class: 'btn' + (wrongIds.length ? '' : ' btn-primary'), href: r.saved ? bankHash + '/stats' : bankHash }, r.saved ? 'Back to stats' : 'Back to bank')
       ),

@@ -123,8 +123,20 @@
     return Math.min(due, Math.max(latestDueMs, startOfTomorrow(nowMs)));
   }
 
-  // Natural due date: one interval (at least a day) after fromMs.
-  function naturalDue(fromMs, s) { return fromMs + Math.max(1, Math.round(interval(s))) * DAY_MS; }
+  // Moves an interval of 3+ days a little either way (±1 day up to a week, then ±10%, then ±5% from
+  // 20 days, as Anki's fuzz does), so a day's answers don't all come back on the same day. Seeded
+  // by the review time, so the same review always lands on the same day.
+  function fuzz(days, seed) {
+    if (days < 3) return days;
+    var range = days < 7 ? 1 : Math.max(1, Math.round(days * (days < 20 ? 0.1 : 0.05)));
+    var h = Math.imul(Math.floor(seed / 1000) ^ 0x9e3779b9, 0x85ebca6b);
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+    h = (h ^ (h >>> 16)) >>> 0;
+    return days - range + h % (2 * range + 1);
+  }
+
+  // Natural due date: one interval (at least a day, fuzzed from 3 days) after fromMs.
+  function naturalDue(fromMs, s) { return fromMs + fuzz(Math.max(1, Math.round(interval(s))), fromMs) * DAY_MS; }
 
   // state: { difficulty, stability, reps, lapses, lastReview, due } or null for a new card.
   // grade: 1 = Again, 2 = Hard, 3 = Good, 4 = Easy.
@@ -193,6 +205,7 @@
     sameDay: sameDay,
     startOfTomorrow: startOfTomorrow,
     capDue: capDue,
+    fuzz: fuzz,
     naturalDue: naturalDue,
     next: next
   };

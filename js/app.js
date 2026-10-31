@@ -795,7 +795,7 @@
       var answered = Object.keys(a.answers || {}).length;
       return 'Unfinished exam in ' + title + ' — ' + answered + ' of ' + a.ids.length + ' answered.';
     }
-    if (a.phase === 'results') return 'Practice results in ' + title + ' (retry rounds available).';
+    if (a.phase === 'results') return 'Practice results in ' + title + ' (redo rounds available).';
     return 'Unfinished practice test in ' + title + ' — question ' + (a.index + 1) + ' of ' + a.queue.length + '.';
   }
 

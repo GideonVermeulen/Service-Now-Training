@@ -222,9 +222,9 @@
   var cases = [
     { name: 'new', p: null, status: 'new', w: 0.75, weights: [1, 3.25, 6.25] },
     { name: 'weak (last grade Again)', p: fp(2, 1, 1, 7), status: 'weak', w: 1, weights: [1, 4, 8] },
-    { name: 'learning, not yet due (D 5 → 0.15)', p: fp(10, 3, 4, 5), status: 'learning', w: 0.15, weights: [1, 1.45, 2.05] },
+    { name: 'learning, not yet due (D 5 → 0.15)', p: fp(9, 3, 4, 5), status: 'learning', w: 0.15, weights: [1, 1.45, 2.05] },
     { name: 'mastered, not yet due (D 2 → 0.06)', p: fp(30, 3, 10, 2), status: 'mastered', w: 0.06, weights: [1, 1.18, 1.42] },
-    { name: 'learning, 5 days overdue at S 10 → 0.5', p: fp(10, 3, -5, 5), status: 'learning', w: 0.5, weights: [1, 2.5, 4.5] },
+    { name: 'learning, 4.5 days overdue at S 9 → 0.5', p: fp(9, 3, -4.5, 5), status: 'learning', w: 0.5, weights: [1, 2.5, 4.5] },
     { name: 'long overdue is capped at 0.8', p: fp(2, 4, -10, 5), status: 'learning', w: 0.8, weights: [1, 3.4, 6.6] },
     { name: 'mastered then missed → weak', p: W.record(fp(30, 3, 10, 2), 1), status: 'weak', w: 1, weights: [1, 4, 8] },
     { name: 'legacy record, last answer wrong → weak', p: prog(3, 2, 0, [true, true, false], false), status: 'weak', w: 1, weights: [1, 4, 8] }
@@ -339,6 +339,62 @@
     eq(JSON.stringify(progress), before, 'progress unchanged in retry');
     assert(s.solved.a, 'retry still marks solved');
   });
+  test('Guessed counts as right in the score, is scheduled as Again, and is redone until marked Knew it (max 3 redos)', function () {
+    var progress = {};
+    var s = P.createSession(tb, ['a', 'c'], progress, {});
+    P.applyAnswer(s, progress, tmap.a, [1], T1);  // right
+    P.applyRating(s, progress, tmap.a, P.GUESSED, T1);
+    eq(progress.a.lastGrade, 1, 'scheduled as Again');
+    assert(Date.parse(progress.a.due) - Date.parse(T1) <= 2 * DAY, 'back within a day or so: ' + progress.a.due);
+    P.applyAnswer(s, progress, tmap.c, [3], T1);  // right
+    P.applyRating(s, progress, tmap.c, 3, T1);
+    P.finishRound(s, 1000);
+    eq(P.firstAttemptCorrect(s), 2, 'a guess still counts as right');
+    eq(s.redoReadyAt, 1000 + P.REDO_DELAY_MS);
+    eq(P.toRedo(s), ['a']);
+    var before = JSON.stringify(progress);
+    for (var round = 1; round <= P.MAX_REDOS; round++) {
+      assert(P.canRedo(s), 'redo ' + round + ' allowed');
+      P.startRetry(s);
+      eq(s.queue, ['a']);
+      P.applyAnswer(s, progress, tmap.a, [1], T2);
+      eq(P.needsRating(s, tmap.a), false);
+      eq(P.needsGuessCheck(s, tmap.a), true);
+      P.markGuess(s, tmap.a, true);  // guessed again
+      P.finishRound(s);
+    }
+    eq(P.canRedo(s), false, 'capped after ' + P.MAX_REDOS + ' redos');
+    eq(JSON.stringify(progress), before, 'redo rounds never touch progress');
+    s.round = 2;  // a "Knew it" ends the loop
+    P.markGuess(s, tmap.a, false);
+    eq(P.toRedo(s), []);
+  });
+  test('fuzz spreads intervals of 3+ days within range, the same review always lands on the same day', function () {
+    var F = SET.fsrs;
+    eq(F.fuzz(1, 123456789), 1); eq(F.fuzz(2, 123456789), 2);
+    var seen = {};
+    for (var i = 0; i < 200; i++) {
+      var t = Date.parse('2026-03-01T09:00:00Z') + i * 7000;
+      var d = F.fuzz(30, t);
+      eq(d, F.fuzz(30, t), 'stable');
+      assert(d >= 28 && d <= 32, 'within ±5%: ' + d);
+      var d3 = F.fuzz(3, t);
+      assert(d3 >= 2 && d3 <= 4, '3 days: ' + d3);
+      seen[d] = true;
+    }
+    assert(Object.keys(seen).length > 2, 'actually spreads');
+  });
+  test('an exam retake (counted: false) never touches progress, even on the first attempt', function () {
+    var progress = {};
+    var s = P.createSession(tb, ['a', 'b'], progress, { counted: false });
+    P.applyAnswer(s, progress, tmap.a, [0], T1);    // wrong
+    P.applyAnswer(s, progress, tmap.b, [2, 0], T1); // right
+    eq(P.needsRating(s, tmap.b), false, 'not rated');
+    P.applyRating(s, progress, tmap.b, 4, T1);
+    eq(JSON.stringify(progress), '{}', 'progress unchanged');
+    P.finishRound(s);
+    eq(P.firstAttemptCorrect(s), 1, 'still scored on screen');
+  });
   test('the exam date cap is worked out at answer time from the bank\'s exam date', function () {
     SET.storage.deleteAll();
     SET.storage.saveBank(tb);
@@ -419,7 +475,7 @@
       near(n.stability, expect[g][0], 1e-6, 'S grade ' + g);
       near(n.difficulty, expect[g][1], 1e-6, 'D grade ' + g);
       eq(n.reps, 1); eq(n.lapses, 0);
-      eq(n.due, iso(NOW + expect[g][2] * DAY), 'due grade ' + g);
+      eq(n.due, iso(NOW + F.fuzz(expect[g][2], NOW) * DAY), 'due grade ' + g + ' (unfuzzed ' + expect[g][2] + ' days)');
       eq(n.lastReview, iso(NOW));
     });
   });
@@ -433,7 +489,7 @@
       near(n.difficulty, expect[g][1], 1e-6, 'D grade ' + g);
       eq(n.reps, 4); eq(n.lapses, 0);
     });
-    eq(F.next(existing, 3, NOW, null).due, iso(NOW + 33 * DAY));
+    eq(F.next(existing, 3, NOW, null).due, iso(NOW + F.fuzz(33, NOW) * DAY));
   });
   test('lapse on an existing card', function () {
     var n = F.next(existing, 1, NOW, null);
@@ -466,9 +522,9 @@
   });
   test('cramming one day cannot reach Mastered; spacing over days can', function () {
     var p = null, t = new Date(2026, 5, 1, 8, 0).getTime();
-    for (var i = 0; i < 8; i++) p = W.record(p, i < 2 ? 4 : 3, iso(t + i * 3600000));
+    for (var i = 0; i < 8; i++) p = W.record(p, i === 1 ? 4 : 3, iso(t + i * 3600000)); // Easy on a same-day repeat doesn't count either
     eq(W.status(p), 'learning', '8 right answers in one day');
-    near(p.stability, F.initStability(4), 1e-9, 'only the first answer of the day counted');
+    near(p.stability, F.initStability(3), 1e-9, 'only the first answer of the day counted');
     eq(p.seen, 8); eq(p.correct, 8); eq(p.streak, 8);
     eq(p.lastReview, iso(t), 'schedule anchored to the counted review');
     p = W.record(p, 3, p.due);
@@ -493,7 +549,7 @@
   });
   test('no cap (null or undefined) leaves the interval alone', function () {
     var n1 = F.next(existing, 3, NOW, null), n2 = F.next(existing, 3, NOW);
-    eq(n1.due, iso(NOW + Math.round(n1.stability) * DAY));
+    eq(n1.due, iso(NOW + F.fuzz(Math.round(n1.stability), NOW) * DAY));
     eq(n2.due, n1.due);
   });
   test('a cap in the past still lands no earlier than the start of tomorrow', function () {
@@ -529,9 +585,11 @@
     eq(W.status(W.record(p, 1, iso(NOW))), 'weak');
   });
   test('mastered at MASTERY_DAYS stability, learning just below', function () {
-    eq(W.MASTERY_DAYS, 21);
-    eq(W.status(fp(21, 3, 5)), 'mastered');
-    eq(W.status(fp(20.99, 3, 5)), 'learning');
+    eq(W.MASTERY_DAYS, 10);
+    eq(W.status(fp(10, 3, 5)), 'mastered');
+    eq(W.status(W.record(null, 4, iso(NOW))), 'mastered', 'Easy on a new question: mastered at once');
+    eq(W.status(W.record(null, 3, iso(NOW))), 'learning', 'Good on a new question: not yet');
+    eq(W.status(fp(9.99, 3, 5)), 'learning');
     eq(W.status(fp(1, 2, 1)), 'learning');
   });
   test('Good reviews on their due dates move a card from learning to mastered', function () {
@@ -1138,12 +1196,23 @@
     assert(due <= at('2026-10-10T00:00'), 'due ' + p.due);
     assert(due >= at('2026-10-09T00:00'), 'not due again on the 8th: ' + p.due);
   });
-  test('exam tomorrow gives no cap, and a question just answered is not due again today', function () {
+  test('exam tomorrow caps at the exam morning, and a question just answered is not due again today', function () {
     var now = at('2026-10-08T10:00');
-    eq(W.latestDue('2026-10-09', now), null);
+    eq(W.latestDue('2026-10-09', now), at('2026-10-09T00:00'));
     eq(W.latestDue('2026-10-08', now), null, 'exam today');
-    var p = W.record(null, 3, iso(now), W.examCap('2026-10-09', 'q1', now));
+    var p = W.record(null, 4, iso(now), W.examCap('2026-10-09', 'q1', now));
     eq(W.isDue(p, now + 3600000), false);
+    eq(Date.parse(p.due), at('2026-10-09T00:00'), 'due on the exam morning, not after the exam');
+  });
+  test('on exam day, reschedule leaves questions due today where they are', function () {
+    var now = at('2026-10-08T10:00');
+    var held = W.record(null, 4, iso(now - 3 * DAY), at('2026-10-08T00:00')); // held back for today's exam
+    eq(Date.parse(held.due), at('2026-10-08T00:00'));
+    var r = W.reschedule({ held: held }, '2026-10-08', now);
+    eq(r.moved, 0);
+    eq(r.progress.held.due, held.due);
+    var r2 = W.reschedule({ held: held }, '2026-10-09', now);
+    eq(r2.moved, 0, 'exam tomorrow: still due today');
   });
   test('daylight saving: the cap lands on local midnight across a clock change', function () {
     var y = 2026, change = null;
@@ -1204,7 +1273,7 @@
     var when = at('2026-03-01T09:00');
     P.applyAnswer(s, progress, tmap.a, [1], iso(when));
     P.applyRating(s, progress, tmap.a, 4, iso(when));
-    eq(progress.a.due, iso(when + Math.round(F.interval(progress.a.stability)) * DAY), 'natural interval, no exam date');
+    eq(progress.a.due, iso(when + F.fuzz(Math.round(F.interval(progress.a.stability)), when) * DAY), 'natural interval, no exam date');
     SET.storage.deleteAll();
   });
   test('the exam-date hint and reviewFrom agree on the review-only start', function () {
