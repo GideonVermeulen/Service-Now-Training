@@ -314,60 +314,127 @@
   tb.id = 'test-bank';
   var tmap = B.byId(tb);
   var T1 = '2026-03-01T09:00:00.000Z', T2 = '2026-03-01T09:05:00.000Z';
-  test('round 1 counts; wrong is Again at once, right waits for a rating; retries do not change progress', function () {
+  // Puts question id on screen (as if the session had moved on to it).
+  function onScreen(s, id) { s.current = null; s.index = s.queue.indexOf(id); }
+  test('first answers count; wrong is Again at once, right waits for a rating; redos do not change progress', function () {
     var progress = {};
     var s = P.createSession(tb, ['a', 'b', 'c'], progress, { focus: 2 });
+    var t1 = Date.parse(T1);
     P.applyAnswer(s, progress, tmap.a, [0], T1);    // wrong
     eq(P.needsRating(s, tmap.a), false, 'wrong answers are not rated');
     eq(progress.a.seen, 1); eq(progress.a.streak, 0); eq(progress.a.lastGrade, 1);
+    eq(s.redo.a.readyAt, t1 + P.REDO_STEPS_MS[0], 'redo in a minute');
+    eq(P.advance(s, t1), true); eq(P.currentId(s), 'b', 'redo not ready yet: next question');
     P.applyAnswer(s, progress, tmap.b, [2, 0], T1); // right (order-insensitive)
     eq(P.needsRating(s, tmap.b), true);
     assert(!progress.b, 'right answer not recorded before rating');
     P.applyRating(s, progress, tmap.b, 2, T1);
     eq(progress.b.correct, 1); eq(progress.b.streak, 1); eq(progress.b.lastGrade, 2);
+    P.advance(s, t1);
     P.applyAnswer(s, progress, tmap.c, [3], T1);    // right
     P.applyRating(s, progress, tmap.c, 4, T1);
     eq(progress.c.lastGrade, 4);
-    P.finishRound(s);
+    eq(P.advance(s, t1), false, 'questions done: results');
+    eq(s.phase, 'results');
     eq(P.firstAttemptCorrect(s), 2);
+    eq(P.pendingRedos(s), ['a']);
     var before = JSON.stringify(progress);
-    P.startRetry(s);
-    eq(s.queue, ['a']);
+    assert(P.startEndPass(s), '"Do them now"');
+    eq(P.currentId(s), 'a');
     P.applyAnswer(s, progress, tmap.a, [1], T2);
-    eq(P.needsRating(s, tmap.a), false, 'retry rounds are not rated');
+    eq(P.needsRating(s, tmap.a), false, 'redos are not rated');
+    eq(P.needsGuessCheck(s, tmap.a), true);
     P.applyRating(s, progress, tmap.a, 4, T2);
-    eq(JSON.stringify(progress), before, 'progress unchanged in retry');
-    assert(s.solved.a, 'retry still marks solved');
+    P.markGuess(s, tmap.a, false, Date.parse(T2)); // Knew it
+    eq(JSON.stringify(progress), before, 'progress unchanged by redos');
+    eq(P.advance(s, Date.parse(T2)), false);
+    assert(P.isDone(s, 'a'), 'cleared');
+    eq(P.pendingRedos(s), []);
   });
-  test('Guessed counts as right in the score, is scheduled as Again, and is redone until marked Knew it (max 3 redos)', function () {
+  test('redo steps: 1 minute, then 10 minutes, then end of session, then back tomorrow; at least 3 answers between', function () {
     var progress = {};
-    var s = P.createSession(tb, ['a', 'c'], progress, {});
+    var s = P.createSession(tb, ['a', 'b', 'c'], progress, {});
+    var t = Date.parse(T1);
     P.applyAnswer(s, progress, tmap.a, [1], T1);  // right
     P.applyRating(s, progress, tmap.a, P.GUESSED, T1);
     eq(progress.a.lastGrade, 1, 'scheduled as Again');
-    assert(Date.parse(progress.a.due) - Date.parse(T1) <= 2 * DAY, 'back within a day or so: ' + progress.a.due);
-    P.applyAnswer(s, progress, tmap.c, [3], T1);  // right
-    P.applyRating(s, progress, tmap.c, 3, T1);
-    P.finishRound(s, 1000);
-    eq(P.firstAttemptCorrect(s), 2, 'a guess still counts as right');
-    eq(s.redoReadyAt, 1000 + P.REDO_DELAY_MS);
-    eq(P.toRedo(s), ['a']);
+    assert(Date.parse(progress.a.due) - t <= 2 * DAY, 'back within a day or so: ' + progress.a.due);
+    eq(P.readyRedo(s, t + 60000), null, 'too few answers in between');
+    s.answered += P.MIN_GAP;
+    eq(P.readyRedo(s, t + 59000), null, 'not a minute yet');
+    eq(P.readyRedo(s, t + 60000), 'a');
     var before = JSON.stringify(progress);
-    for (var round = 1; round <= P.MAX_REDOS; round++) {
-      assert(P.canRedo(s), 'redo ' + round + ' allowed');
-      P.startRetry(s);
-      eq(s.queue, ['a']);
-      P.applyAnswer(s, progress, tmap.a, [1], T2);
-      eq(P.needsRating(s, tmap.a), false);
-      eq(P.needsGuessCheck(s, tmap.a), true);
-      P.markGuess(s, tmap.a, true);  // guessed again
-      P.finishRound(s);
-    }
-    eq(P.canRedo(s), false, 'capped after ' + P.MAX_REDOS + ' redos');
-    eq(JSON.stringify(progress), before, 'redo rounds never touch progress');
-    s.round = 2;  // a "Knew it" ends the loop
-    P.markGuess(s, tmap.a, false);
-    eq(P.toRedo(s), []);
+    s.current = 'a';
+    P.applyAnswer(s, progress, tmap.a, [1], iso(t + 60000));
+    P.markGuess(s, tmap.a, true, t + 60000);      // guessed again
+    eq(s.redo.a.tries, 1); eq(s.redo.a.readyAt, t + 60000 + 10 * 60000, 'then 10 minutes');
+    P.applyAnswer(s, progress, tmap.a, [0], iso(t + 11 * 60000)); // wrong this time
+    eq(s.redo.a.tries, 2); eq(s.redo.a.readyAt, null, 'then the end of the session');
+    s.answered += 10;
+    eq(P.readyRedo(s, t + DAY / 2), null, 'end-of-session redos are not slotted in');
+    eq(P.pendingRedos(s), ['a']);
+    P.applyAnswer(s, progress, tmap.a, [1], iso(t + 12 * 60000));
+    P.markGuess(s, tmap.a, true, t + 12 * 60000);
+    eq(P.pendingRedos(s), [], 'stopped after ' + P.MAX_REDOS + ' redos');
+    eq(P.cappedRedos(s), ['a']);
+    eq(JSON.stringify(progress), before, 'redos never touch progress');
+    P.finishRound(s);
+    eq(P.firstAttemptCorrect(s), 1, 'a guess still counts as right');
+    eq(P.isDone(s, 'a'), false);
+  });
+  test('a ready redo is slotted in before the next question; "Do them now" goes through the rest without waiting', function () {
+    var progress = {};
+    var s = P.createSession(tb, ['a', 'b', 'c'], progress, { counted: false });
+    var t = Date.parse(T1);
+    P.applyAnswer(s, progress, tmap.a, [0], T1);  // wrong
+    s.answered += P.MIN_GAP;
+    P.advance(s, t + 60000);
+    eq(P.currentId(s), 'a', 'redo first'); eq(s.index, 1, 'b still next');
+    P.applyAnswer(s, progress, tmap.a, [0], iso(t + 60000)); // wrong again: 10 minutes
+    P.advance(s, t + 61000);
+    eq(P.currentId(s), 'b');
+    P.applyAnswer(s, progress, tmap.b, [0, 2], iso(t + 61000));
+    eq(P.needsGuessCheck(s, tmap.b), true, 'uncounted: guess check, no rating');
+    P.markGuess(s, tmap.b, false, t + 61000);
+    P.advance(s, t + 62000);
+    P.applyAnswer(s, progress, tmap.c, [0], iso(t + 62000)); // wrong
+    eq(P.advance(s, t + 63000), false, 'results, with redos left');
+    eq(P.pendingRedos(s), ['c', 'a'], 'soonest first');
+    P.startEndPass(s);
+    eq(P.currentId(s), 'c');
+    P.applyAnswer(s, progress, tmap.c, [3], iso(t + 64000));
+    P.markGuess(s, tmap.c, false, t + 64000);
+    eq(P.advance(s, t + 64000), true); eq(P.currentId(s), 'a');
+    P.applyAnswer(s, progress, tmap.a, [1], iso(t + 65000));
+    P.markGuess(s, tmap.a, false, t + 65000);
+    eq(P.advance(s, t + 65000), false);
+    eq(P.pendingRedos(s), []);
+    eq(JSON.stringify(progress), '{}', 'uncounted session never touches progress');
+  });
+  test('a session saved with the old redo rounds moves its unsolved questions onto the redo list', function () {
+    var old = { type: 'practice', round: 2, phase: 'results', queue: ['a'], testIds: ['a', 'b', 'c'], index: 1,
+      solved: { a: true, b: true }, guessed: { b: true }, roundAnswers: {}, firstResults: {} };
+    P.upgradeSession(old, 5000);
+    eq(Object.keys(old.redo).sort(), ['b', 'c']);
+    eq(old.phase, 'results');
+    eq(P.pendingRedos(old).length, 2);
+    eq(old.round, undefined);
+    eq(Object.keys(old.roundAnswers).sort(), ['a', 'b', 'c'], 'first answers rebuilt for the results list');
+    var mid = { type: 'practice', round: 1, phase: 'question', queue: ['a', 'b', 'c'], index: 2, testIds: [],
+      solved: { b: true }, guessed: {}, roundAnswers: { a: { selected: [0], correct: false }, b: { selected: [1], correct: true } }, firstResults: { a: false, b: true } };
+    P.upgradeSession(mid, 5000);
+    eq(Object.keys(mid.redo), ['a'], 'a wrong answer from before the upgrade still gets a redo');
+    eq(mid.phase, 'question'); eq(mid.index, 2);
+  });
+  test('the Today tile counts only today’s redos, and only from counted sessions', function () {
+    var now = Date.now();
+    var s = P.createSession(tb, ['a', 'b'], {}, {});
+    s.redo = { a: { tries: 0, readyAt: now, seenAt: 0, at: now }, b: { tries: 0, readyAt: now, seenAt: 0, at: now - 2 * DAY } };
+    eq(P.redosLeft(s, tb.id, true), 1, 'a miss from an earlier day has expired');
+    s.counted = false;
+    eq(P.redosLeft(s, tb.id, true), 0, 'an exam retake does not hold up the day');
+    eq(P.redosLeft(s, tb.id), 1, 'but still shows in its own session');
+    eq(P.redosLeft(s, 'other-bank'), 0);
   });
   test('fuzz spreads intervals of 3+ days within range, the same review always lands on the same day', function () {
     var F = SET.fsrs;
@@ -388,6 +455,7 @@
     var progress = {};
     var s = P.createSession(tb, ['a', 'b'], progress, { counted: false });
     P.applyAnswer(s, progress, tmap.a, [0], T1);    // wrong
+    onScreen(s, 'b');
     P.applyAnswer(s, progress, tmap.b, [2, 0], T1); // right
     eq(P.needsRating(s, tmap.b), false, 'not rated');
     P.applyRating(s, progress, tmap.b, 4, T1);
@@ -1285,20 +1353,21 @@
 
   /* 24. Review log */
   group('24. Review log');
-  test('practice answers are logged; retry rounds are not', function () {
+  test('practice answers are logged; redos are not', function () {
     SET.storage.deleteAll();
     SET.storage.saveBank(tb);
     var progress = {};
     var s = P.createSession(tb, ['a', 'b'], progress, { focus: 2 });
     var t = at('2026-03-01T09:00');
     P.applyAnswer(s, progress, tmap.a, [0], iso(t));          // wrong: logged at once
+    onScreen(s, 'b');
     P.applyAnswer(s, progress, tmap.b, [0, 2], iso(t + 1000)); // right: logged when rated
     eq(SET.storage.getReviews(tb.id).length, 1);
     P.applyRating(s, progress, tmap.b, 4, iso(t + 2000));
     eq(SET.storage.getReviews(tb.id), [['a', t, 1, 'p'], ['b', t + 2000, 4, 'p']]);
-    P.finishRound(s); P.startRetry(s);
+    P.finishRound(s); P.startEndPass(s);
     P.applyAnswer(s, progress, tmap.a, [1], iso(t + 3000));
-    eq(SET.storage.getReviews(tb.id).length, 2, 'retry not logged');
+    eq(SET.storage.getReviews(tb.id).length, 2, 'redo not logged');
     SET.storage.deleteAll();
   });
   test('exam answers are logged as e; unanswered are not', function () {

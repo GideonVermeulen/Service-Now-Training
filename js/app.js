@@ -795,7 +795,8 @@
       var answered = Object.keys(a.answers || {}).length;
       return 'Unfinished exam in ' + title + ' — ' + answered + ' of ' + a.ids.length + ' answered.';
     }
-    if (a.phase === 'results') return 'Practice results in ' + title + ' (redo rounds available).';
+    var redos = SET.practice.redosLeft(a, a.bankId);
+    if (a.phase === 'results') return 'Practice results in ' + title + (redos ? ' — ' + plural(redos, 'redo') + ' left.' : '.');
     return 'Unfinished practice test in ' + title + ' — question ' + (a.index + 1) + ' of ' + a.queue.length + '.';
   }
 
@@ -1071,9 +1072,13 @@
 
   // Today: reviews due + new questions, today's session button, and pace advice.
   function todayTile(bankId, plan, n) {
-    var done = plan.reviewsDue === 0 && plan.newLeftToday === 0;
+    var active = S.getActive();
+    var redos = SET.practice.redosLeft(active, bankId, true); // wrong or guessed today and not yet redone
+    var done = plan.reviewsDue === 0 && plan.newLeftToday === 0 && !redos;
     var settings = S.getSettings();
-    var sub = done
+    var sub = redos && plan.reviewsDue === 0 && plan.newLeftToday === 0
+      ? plural(redos, 'redo') + ' left to finish today'
+      : done
       ? (plan.missedToday ? 'Done for today ✓ — the ' + plural(plan.missedToday, 'question') + ' you missed ' + (plan.missedToday === 1 ? 'comes' : 'come') + ' back tomorrow, when recalling ' + (plan.missedToday === 1 ? 'it' : 'them') + ' does the most good. Extra practice is optional.'
         : plan.newRemaining ? 'Done for today ✓ — extra practice is optional' : 'Everything learned and nothing due ✓ — extra practice is optional')
       : plan.source === 'manual'
@@ -1082,12 +1087,14 @@
     var newPart = plan.inBuffer && !plan.behind ? 'review only' : plan.newTarget + ' new';
     return el('div', { class: 'tile tile--today' },
       el('p', { class: 'tile__label' }, 'Today'),
-      el('p', { class: 'tile__value tile__value--sm num' }, plural(plan.reviewsDue, 'review') + ' · ' + newPart),
+      el('p', { class: 'tile__value tile__value--sm num' }, plural(plan.reviewsDue, 'review') + ' · ' + newPart + (redos ? ' · ' + plural(redos, 'redo') : '')),
       plan.newTarget ? el('div', { class: 'tile__bar' },
         progressBar(Math.min(plan.newDoneToday, plan.newTarget), plan.newTarget, 'New questions done today'),
         el('span', { class: 'small muted num' }, Math.min(plan.newDoneToday, plan.newTarget) + ' / ' + plan.newTarget + ' new done')) : null,
       el('p', { class: 'tile__sub' }, sub),
-      el('div', { class: 'tile__action' }, done
+      el('div', { class: 'tile__action' }, redos
+        ? el('a', { class: 'btn btn-primary btn-sm', href: activeHash(active) }, active.phase === 'results' ? 'Finish redos' : 'Resume session')
+        : done
         ? el('button', { class: 'btn btn-sm', type: 'button', onclick: function () {
           SET.practice.start(bankId, { size: Math.min(practiceSize === 'all' ? n : practiceSize, n), focus: settings.focus });
         } }, 'Extra practice')
