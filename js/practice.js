@@ -6,9 +6,10 @@
 
   var state = null; // { session, bank, qmap, progress }
   var GUESSED = 1;   // a right answer rated Guessed is scheduled as Again
-  // Redo steps for a wrong or guessed question, after each miss: ~1 minute (past short-term memory),
-  // then ~10 minutes (effortful recall), then once more at the end of the session. A miss after that
-  // stops it for today; the normal schedule brings it back tomorrow.
+  // Redo steps for a guessed question, after each miss: ~1 minute (past short-term memory), then
+  // ~10 minutes (effortful recall), then once more at the end of the session. A wrong answer skips
+  // the in-session steps and waits for the retry round at the end. A miss after the last step stops
+  // it for today; the normal schedule brings it back tomorrow.
   var REDO_STEPS_MS = [60000, 10 * 60000, Infinity];
   var MAX_REDOS = REDO_STEPS_MS.length;
   var MIN_GAP = 3;   // other answers between seeing a question and its redo
@@ -107,7 +108,8 @@
 
   // Records an answer to the question on screen. Only the first answer to a question in a counted
   // session updates progress; redos (and sessions started with counted: false) never do.
-  // A wrong answer is recorded straight away as Again and queued for a redo; a right one waits for
+  // A wrong answer is recorded straight away as Again and queued for the retry round at the end of
+  // the session; a right one waits for
   // applyRating (first answer) or markGuess (a redo, or an uncounted session).
   function applyAnswer(session, progress, q, selected, when) {
     var correct = W.isCorrect(selected, q.answer);
@@ -116,14 +118,14 @@
     if (session.current) {
       session.redoBefore = session.redo[q.id] ? JSON.parse(JSON.stringify(session.redo[q.id])) : null;
       session.redoAnswer = { selected: selected.slice(), correct: correct };
-      if (!correct) missRedo(session, q.id, now);
+      if (!correct) missRedo(session, q.id, now, true);
       return correct;
     }
     session.roundAnswers[q.id] = { selected: selected.slice(), correct: correct };
     session.firstResults[q.id] = correct;
     if (!correct) {
       if (counted(session)) recordAnswer(session.bankId, progress, q.id, 1, when, 'p');
-      missRedo(session, q.id, now);
+      missRedo(session, q.id, now, true);
     }
     return correct;
   }
@@ -163,12 +165,13 @@
     }
   }
 
-  // Queues the next redo step after a miss (wrong or guessed), or stops it for today after the last.
-  function missRedo(session, id, now) {
+  // Queues the next redo step after a miss, or stops it for today after the last. wrong: a wrong
+  // answer, which (like anything already waiting for the end) goes to the retry round at the end.
+  function missRedo(session, id, now, wrong) {
     var r = session.redo[id];
     var tries = r ? r.tries + (session.current === id ? 1 : 0) : 0;
     if (tries >= MAX_REDOS) { session.redo[id] = { tries: tries, readyAt: null, seenAt: session.answered, at: now, capped: true }; return; }
-    var wait = REDO_STEPS_MS[tries];
+    var wait = wrong || (r && r.readyAt === null) ? Infinity : REDO_STEPS_MS[tries];
     session.redo[id] = { tries: tries, readyAt: isFinite(wait) ? now + wait : null, seenAt: session.answered, at: now };
   }
 
@@ -178,10 +181,12 @@
     return !SET.fsrs.sameDay(typeof at === 'number' ? at : Date.parse(session.startedAt), now);
   }
 
-  // Redos still to do (not stopped for today), soonest first; end-of-session ones last.
+  // Redos still to do (not stopped for today), soonest first; end-of-session ones last, in the order
+  // they were missed.
   function pendingRedos(session) {
     return Object.keys(session.redo || {}).filter(function (id) { return !session.redo[id].capped; }).sort(function (a, b) {
       var x = session.redo[a].readyAt, y = session.redo[b].readyAt;
+      if (x === y) return (session.redo[a].at || 0) - (session.redo[b].at || 0);
       return (x === null ? Infinity : x) - (y === null ? Infinity : y);
     });
   }
@@ -459,7 +464,7 @@
         label, sub ? el('span', { class: 'btn__sub num' }, sub) : null);
     };
     if (rating) {
-      var when = new Date().toISOString();
+      var when = ratedAt(s);
       var rateBtn = function (grade, label, hint) {
         return choiceBtn(String(grade), label, nextReviewLabel(q.id, grade, when), hint, function () { rate(q, grade); });
       };
@@ -520,6 +525,7 @@
     var s = state.session;
     if (s.phase !== 'question' || s.selected.length !== q.answer.length) return;
     var when = new Date().toISOString();
+    s.answeredAt = when;
     if (!s.current && counted(s)) updateProgress(function (progress) { applyAnswer(s, progress, q, s.selected, when); });
     else applyAnswer(s, state.progress, q, s.selected, when);
     s.phase = needsRating(s, q) ? 'rate' : needsGuessCheck(s, q) ? 'check' : 'feedback';
@@ -569,10 +575,14 @@
     save();
   }
 
+  // The time a rating is recorded at: when the answer was submitted, so the next-review times on the
+  // buttons (fuzzed by that time) are the ones you get. Sessions saved before this: now.
+  function ratedAt(s) { return s.answeredAt || new Date().toISOString(); }
+
   function rate(q, grade) {
     var s = state.session;
     if (s.phase !== 'rate') return;
-    var when = new Date().toISOString();
+    var when = ratedAt(s);
     updateProgress(function (progress) { applyRating(s, progress, q, grade, when); });
     next();
   }
@@ -615,7 +625,7 @@
       if (!ok) return;
       var q = state.qmap[currentId(s)];
       if (s.phase === 'rate') { // answered right but not rated yet: count it as Good
-        var when = new Date().toISOString();
+        var when = ratedAt(s);
         updateProgress(function (progress) { applyRating(s, progress, q, 3, when); });
       }
       if (s.phase === 'check') markGuess(s, q, true); // not confirmed: keep it for another redo
