@@ -512,12 +512,13 @@
     else if (locked) nextBtn.focus();
   }
 
-  // When the question would come back with this grade, e.g. "1d" or "~3w". From 3 days the date is
-  // fuzzed, so it can land a day or so either side.
+  // When the question would come back with this grade, e.g. "1d" or "~18d": exact days up to two
+  // months, so fuzzed dates aren't blurred into weeks. From 3 days the date is fuzzed, so it can
+  // land a day or so either side.
   function nextReviewLabel(id, grade, when) {
     var p = W.record(W.get(state.progress, id), grade, when, examCap(state.bank.id, id, when));
     var days = Math.max(1, W.calendarDays(when, p.due));
-    var text = days < 14 ? days + 'd' : days < 60 ? Math.round(days / 7) + 'w' : days < 365 ? Math.round(days / 30) + 'mo' : Math.round(days / 365 * 10) / 10 + 'y';
+    var text = days < 60 ? days + 'd' : days < 365 ? Math.round(days / 30) + 'mo' : Math.round(days / 365 * 10) / 10 + 'y';
     return (days >= 3 ? '~' : '') + text;
   }
 
