@@ -138,6 +138,10 @@
   // Natural due date: one interval (at least a day, fuzzed from 3 days) after fromMs.
   function naturalDue(fromMs, s) { return fromMs + fuzz(Math.max(1, Math.round(interval(s))), fromMs) * DAY_MS; }
 
+  // Due date after a counted review. Again (wrong or guessed) is always due tomorrow, as the daily
+  // plan treats it; the lowered stability still shapes the interval after the next right answer.
+  function dueAfter(nowMs, s, g) { return g === AGAIN ? startOfTomorrow(nowMs) : naturalDue(nowMs, s); }
+
   // state: { difficulty, stability, reps, lapses, lastReview, due } or null for a new card.
   // grade: 1 = Again, 2 = Hard, 3 = Good, 4 = Easy.
   // latestDueMs: optional latest moment the next review may be due (ms); null = no cap.
@@ -176,7 +180,7 @@
       stability: res.s,
       reps: reps + 1,
       lapses: lapses,
-      due: new Date(capDue(naturalDue(nowMs, res.s), latestDueMs, nowMs)).toISOString(),
+      due: new Date(capDue(dueAfter(nowMs, res.s, g), latestDueMs, nowMs)).toISOString(),
       lastReview: new Date(nowMs).toISOString(),
       counted: true
     };

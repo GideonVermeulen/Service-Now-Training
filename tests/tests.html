@@ -323,8 +323,8 @@
     P.applyAnswer(s, progress, tmap.a, [0], T1);    // wrong
     eq(P.needsRating(s, tmap.a), false, 'wrong answers are not rated');
     eq(progress.a.seen, 1); eq(progress.a.streak, 0); eq(progress.a.lastGrade, 1);
-    eq(s.redo.a.readyAt, t1 + P.REDO_STEPS_MS[0], 'redo in a minute');
-    eq(P.advance(s, t1), true); eq(P.currentId(s), 'b', 'redo not ready yet: next question');
+    eq(s.redo.a.readyAt, null, 'wrong: waits for the retry round at the end');
+    eq(P.advance(s, t1), true); eq(P.currentId(s), 'b', 'next question');
     P.applyAnswer(s, progress, tmap.b, [2, 0], T1); // right (order-insensitive)
     eq(P.needsRating(s, tmap.b), true);
     assert(!progress.b, 'right answer not recorded before rating');
@@ -382,15 +382,27 @@
     eq(P.firstAttemptCorrect(s), 1, 'a guess still counts as right');
     eq(P.isDone(s, 'a'), false);
   });
-  test('a ready redo is slotted in before the next question; "Do them now" goes through the rest without waiting', function () {
+  test('a wrong answer is never slotted in mid-session: it waits for the retry round at the end', function () {
+    var progress = {};
+    var s = P.createSession(tb, ['a', 'b', 'c'], progress, {});
+    var t = Date.parse(T1);
+    P.applyAnswer(s, progress, tmap.a, [0], T1);  // wrong
+    s.answered += 10;
+    eq(P.readyRedo(s, t + DAY / 2), null, 'not slotted in, however long it has been');
+    P.advance(s, t + DAY / 2);
+    eq(P.currentId(s), 'b');
+  });
+  test('a ready guessed redo is slotted in before the next question; "Do them now" goes through the rest without waiting', function () {
     var progress = {};
     var s = P.createSession(tb, ['a', 'b', 'c'], progress, { counted: false });
     var t = Date.parse(T1);
-    P.applyAnswer(s, progress, tmap.a, [0], T1);  // wrong
+    P.applyAnswer(s, progress, tmap.a, [1], T1);  // right
+    P.markGuess(s, tmap.a, true, t);              // but guessed: a minute
     s.answered += P.MIN_GAP;
     P.advance(s, t + 60000);
     eq(P.currentId(s), 'a', 'redo first'); eq(s.index, 1, 'b still next');
-    P.applyAnswer(s, progress, tmap.a, [0], iso(t + 60000)); // wrong again: 10 minutes
+    P.applyAnswer(s, progress, tmap.a, [0], iso(t + 60000)); // wrong this time: end of session
+    eq(s.redo.a.readyAt, null);
     P.advance(s, t + 61000);
     eq(P.currentId(s), 'b');
     P.applyAnswer(s, progress, tmap.b, [0, 2], iso(t + 61000));
@@ -399,14 +411,14 @@
     P.advance(s, t + 62000);
     P.applyAnswer(s, progress, tmap.c, [0], iso(t + 62000)); // wrong
     eq(P.advance(s, t + 63000), false, 'results, with redos left');
-    eq(P.pendingRedos(s), ['c', 'a'], 'soonest first');
+    eq(P.pendingRedos(s), ['a', 'c'], 'in the order they were missed');
     P.startEndPass(s);
-    eq(P.currentId(s), 'c');
-    P.applyAnswer(s, progress, tmap.c, [3], iso(t + 64000));
-    P.markGuess(s, tmap.c, false, t + 64000);
-    eq(P.advance(s, t + 64000), true); eq(P.currentId(s), 'a');
-    P.applyAnswer(s, progress, tmap.a, [1], iso(t + 65000));
-    P.markGuess(s, tmap.a, false, t + 65000);
+    eq(P.currentId(s), 'a');
+    P.applyAnswer(s, progress, tmap.a, [1], iso(t + 64000));
+    P.markGuess(s, tmap.a, false, t + 64000);
+    eq(P.advance(s, t + 64000), true); eq(P.currentId(s), 'c');
+    P.applyAnswer(s, progress, tmap.c, [3], iso(t + 65000));
+    P.markGuess(s, tmap.c, false, t + 65000);
     eq(P.advance(s, t + 65000), false);
     eq(P.pendingRedos(s), []);
     eq(JSON.stringify(progress), '{}', 'uncounted session never touches progress');
@@ -543,7 +555,7 @@
       near(n.stability, expect[g][0], 1e-6, 'S grade ' + g);
       near(n.difficulty, expect[g][1], 1e-6, 'D grade ' + g);
       eq(n.reps, 1); eq(n.lapses, 0);
-      eq(n.due, iso(NOW + F.fuzz(expect[g][2], NOW) * DAY), 'due grade ' + g + ' (unfuzzed ' + expect[g][2] + ' days)');
+      eq(n.due, g === 1 ? iso(F.startOfTomorrow(NOW)) : iso(NOW + F.fuzz(expect[g][2], NOW) * DAY), 'due grade ' + g + ' (unfuzzed ' + expect[g][2] + ' days)');
       eq(n.lastReview, iso(NOW));
     });
   });
@@ -564,7 +576,7 @@
     near(n.stability, 2.10769626, 1e-6, 'S');
     near(n.difficulty, 6.60703511, 1e-6, 'D');
     eq(n.lapses, 1); eq(n.reps, 4);
-    eq(n.due, iso(NOW + 2 * DAY));
+    eq(n.due, iso(F.startOfTomorrow(NOW)), 'Again is always due tomorrow, whatever the stability');
   });
   test('a same-day right answer leaves the memory state and schedule unchanged', function () {
     var sameDay = { difficulty: 5, stability: 10, reps: 3, lapses: 0, lastReview: iso(NOW - 3600000), due: iso(NOW + 9 * DAY) };
